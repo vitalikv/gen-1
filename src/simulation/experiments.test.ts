@@ -44,7 +44,7 @@ describe('Эксперименты', () => {
     for (let step = 0; step < 900; step++) {
       engine.advance(1);
       for (const organism of world.organisms) {
-        expect(world.environment.isBlocked(organism.x, organism.z, organism.genome.get('size') - 1e-6)).toBe(false);
+        expect(world.environment.isBlocked(organism.x, organism.z, organism.bodySize - 1e-6)).toBe(false);
       }
     }
     for (const food of world.food) {

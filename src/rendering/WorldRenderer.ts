@@ -162,7 +162,7 @@ export class WorldRenderer {
     const bodyMatrices = this._organismMesh.instanceMatrix.array as Float32Array;
     const ringMatrices = this._perceptionMesh.instanceMatrix.array as Float32Array;
     const perceptionField = organismGeneField('perception');
-    const sizeField = organismGeneField('size');
+    const sizeField = ORGANISM_FIELD.bodySize;
     const selectedIndex = this._selectedId === null ? -1 : this._findIndex(snapshot, this._selectedId);
 
     for (let i = 0; i < count; i++) {
@@ -210,7 +210,7 @@ export class WorldRenderer {
       return null;
     }
 
-    const sizeField = organismGeneField('size');
+    const sizeField = ORGANISM_FIELD.bodySize;
     let pickedId: number | null = null;
     let bestDistance = Infinity;
 
@@ -288,12 +288,13 @@ export class WorldRenderer {
 
   private _updateColors(snapshot: SimulationSnapshot): void {
     const mode: ColorMode = this._settings.state.colorMode;
-    const field = mode === 'energy' ? ORGANISM_FIELD.energyRatio : organismGeneField(mode);
+    const field = mode === 'energy' ? ORGANISM_FIELD.energyRatio : mode === 'sex' ? ORGANISM_FIELD.sex : organismGeneField(mode);
     const colors = this._organismMesh.instanceColor!.array as Float32Array;
 
     for (let i = 0; i < snapshot.organismIds.length; i++) {
       const value = snapshot.organisms[i * ORGANISM_STRIDE + field]!;
-      sequentialColor(mode === 'energy' ? value : normalizeGene(mode, value), this._color);
+      if (mode === 'sex') this._color.set(value === 0 ? '#2879d0' : '#c94e91');
+      else sequentialColor(mode === 'energy' ? value : normalizeGene(mode, value), this._color);
       colors[i * 3] = this._color.r;
       colors[i * 3 + 1] = this._color.g;
       colors[i * 3 + 2] = this._color.b;
@@ -309,7 +310,8 @@ export class WorldRenderer {
 
     const matrices = this._foodMesh.instanceMatrix.array as Float32Array;
     for (let i = 0; i < count; i++) {
-      writeInstanceMatrix(matrices, i, snapshot.food[i * FOOD_STRIDE]!, LAYER_Y.food, snapshot.food[i * FOOD_STRIDE + 1]!, 0, 1);
+      writeInstanceMatrix(matrices, i, snapshot.food[i * FOOD_STRIDE]!, LAYER_Y.food, snapshot.food[i * FOOD_STRIDE + 1]!,
+        0, Math.sqrt(Math.max(0.02, snapshot.food[i * FOOD_STRIDE + 2]!)));
     }
     this._foodMesh.count = count;
     this._foodMesh.instanceMatrix.needsUpdate = true;

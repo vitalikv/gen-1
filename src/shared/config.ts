@@ -60,6 +60,23 @@ export interface SimulationConfig {
     /** Множитель к sigma всех генов */
     sigmaScale: number;
   };
+  physiology: {
+    digestionPerSecond: number;
+    stomachCapacityShare: number;
+    growthDuration: number;
+    growthCostPerSize: number;
+    staminaDrain: number;
+    staminaRecovery: number;
+    starvationDamage: number;
+  };
+  reproduction: {
+    gestationDuration: number;
+    femaleRecovery: number;
+    maleRecovery: number;
+    pregnancyCostPerSize: number;
+  };
+  resources: { regrowthPerSecond: number };
+  perception: { fieldOfView: number; memoryDuration: number };
   behavior: {
     /** Интенсивность случайных поворотов при исследовании, радиан за √секунду */
     turnRate: number;
@@ -113,6 +130,10 @@ export function applyLiveSettings(target: SimulationConfig, source: SimulationCo
   target.lifecycle = { ...source.lifecycle };
   target.mutation = { ...source.mutation };
   target.behavior = { ...source.behavior };
+  target.physiology = { ...source.physiology };
+  target.reproduction = { ...source.reproduction };
+  target.resources = { ...source.resources };
+  target.perception = { ...source.perception };
   target.environment.zonePreset = source.environment.zonePreset;
   target.environment.baseFertility = source.environment.baseFertility;
   target.environment.zones = structuredClone(source.environment.zones);

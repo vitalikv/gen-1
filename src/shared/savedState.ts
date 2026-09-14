@@ -1,9 +1,10 @@
 import type { SimulationConfig } from './config';
 import type { GeneValues } from './genes';
 import type { OrganismAction, StatsSample } from './snapshot';
+import type { LifeState } from './life';
 
 /** Версия модели: сохранения другой версии не загружаются, потому что продолжение не будет точным */
-export const MODEL_VERSION = 1;
+export const MODEL_VERSION = 2;
 
 export const SAVED_STATE_FORMAT = 'gen-1-state';
 
@@ -20,6 +21,7 @@ export interface SavedOrganism {
   currentSpeed: number;
   action: OrganismAction;
   avoidTimer: number;
+  life: LifeState;
 }
 
 export interface SavedFood {
@@ -27,6 +29,8 @@ export interface SavedFood {
   x: number;
   z: number;
   energy: number;
+  maxEnergy: number;
+  eaten: boolean;
 }
 
 /**

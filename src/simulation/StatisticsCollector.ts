@@ -2,6 +2,7 @@ import { GENE_NAMES, type GeneValues } from '@/shared/genes';
 import type { SavedSimulationState } from '@/shared/savedState';
 import type { StatsSample } from '@/shared/snapshot';
 import type { World } from './World';
+import { isMature } from './systems/EvolutionSystem';
 
 /**
  * Метрики популяции и история эксперимента
@@ -78,7 +79,13 @@ export class StatisticsCollector {
     this._samples.push({
       time,
       population,
-      food: world.food.length,
+      food: world.food.filter((food) => !food.eaten).length,
+      males: world.organisms.filter((organism) => organism.sex === 'male').length,
+      females: world.organisms.filter((organism) => organism.sex === 'female').length,
+      mature: world.organisms.filter((organism) => isMature(world, organism)).length,
+      pregnancies: world.organisms.filter((organism) => organism.life.pregnancy !== null).length,
+      starving: world.organisms.filter((organism) => organism.energy <= 0).length,
+      biomass: world.food.reduce((sum, food) => sum + food.energy, 0),
       births: world.birthsTotal - this._lastBirths,
       deaths: world.deathsTotal - this._lastDeaths,
       averageEnergyRatio: population > 0 ? energyRatioSum / population : 0,

@@ -29,6 +29,7 @@ export class ControlPanel {
   private readonly _colorSelect: HTMLSelectElement;
   private readonly _legendMin: HTMLElement;
   private readonly _legendMax: HTMLElement;
+  private readonly _legendGradient: HTMLElement;
   private readonly _stepValue: HTMLElement;
   private readonly _timeValue: HTMLElement;
   private readonly _populationValue: HTMLElement;
@@ -75,6 +76,7 @@ export class ControlPanel {
     const legend = document.createElement('div');
     legend.className = 'color-legend';
     const gradient = document.createElement('span');
+    this._legendGradient = gradient;
     gradient.className = 'color-legend__gradient';
     gradient.style.background = SEQUENTIAL_GRADIENT_CSS;
     this._legendMin = document.createElement('span');
@@ -132,14 +134,21 @@ export class ControlPanel {
       this._stepValue.textContent = String(snapshot.step);
       this._timeValue.textContent = `${snapshot.time.toFixed(1)} с`;
       this._populationValue.textContent = String(snapshot.organismIds.length);
-      this._foodValue.textContent = String(snapshot.food.length / FOOD_STRIDE);
+      let available = 0;
+      for (let i = 0; i < snapshot.food.length; i += FOOD_STRIDE) if (snapshot.food[i + 2]! > 0.04) available++;
+      this._foodValue.textContent = String(available);
       this._seasonValue.textContent = `${Math.round(snapshot.season * 100)}%`;
     }
   }
 
   private _renderLegend(): void {
     const mode = this._settings.state.colorMode;
-    if (mode === 'energy') {
+    this._legendGradient.style.background = mode === 'sex'
+      ? 'linear-gradient(90deg, #2879d0 50%, #c94e91 50%)' : SEQUENTIAL_GRADIENT_CSS;
+    if (mode === 'sex') {
+      this._legendMin.textContent = '♂ Самцы';
+      this._legendMax.textContent = '♀ Самки';
+    } else if (mode === 'energy') {
       this._legendMin.textContent = '0%';
       this._legendMax.textContent = '100%';
     } else {

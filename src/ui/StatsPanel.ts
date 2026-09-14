@@ -23,6 +23,9 @@ export class StatsPanel {
   private readonly _geneSelect: HTMLSelectElement;
   private readonly _populationChart: LineChart;
   private readonly _foodChart: LineChart;
+  private readonly _sexChart: LineChart;
+  private readonly _reproductionChart: LineChart;
+  private readonly _biomassChart: LineChart;
   private readonly _birthsChart: LineChart;
   private readonly _energyChart: LineChart;
   private readonly _seasonChart: LineChart;
@@ -60,6 +63,9 @@ export class StatsPanel {
 
     this._populationChart = new LineChart({ title: 'Численность', format: formatCount });
     this._foodChart = new LineChart({ title: 'Пища на карте', format: formatCount });
+    this._sexChart = new LineChart({ title: 'Самцы и самки', format: formatCount });
+    this._reproductionChart = new LineChart({ title: 'Взрослые и беременности', format: formatCount });
+    this._biomassChart = new LineChart({ title: 'Запас растительной пищи', format: formatCount });
     this._birthsChart = new LineChart({ title: 'Рождения и смерти за 1 с', format: formatCount });
     this._energyChart = new LineChart({
       title: 'Средняя энергия',
@@ -80,6 +86,9 @@ export class StatsPanel {
     this._root.append(
       header,
       this._populationChart.element,
+      this._sexChart.element,
+      this._reproductionChart.element,
+      this._biomassChart.element,
       this._foodChart.element,
       this._birthsChart.element,
       this._energyChart.element,
@@ -123,6 +132,9 @@ export class StatsPanel {
     this._unsubscribers.forEach((unsubscribe) => unsubscribe());
     for (const chart of [
       this._populationChart,
+      this._sexChart,
+      this._reproductionChart,
+      this._biomassChart,
       this._foodChart,
       this._birthsChart,
       this._energyChart,
@@ -157,6 +169,15 @@ export class StatsPanel {
     const times = history.map((sample) => sample.time);
 
     this._populationChart.setData(this._compared((sample) => sample.population));
+    this._sexChart.setData([
+      { label: 'Самцы', color: '#2879d0', times, values: history.map((sample) => sample.males) },
+      { label: 'Самки', color: '#c94e91', times, values: history.map((sample) => sample.females) },
+    ]);
+    this._reproductionChart.setData([
+      { label: 'Взрослые', color: CHART_THEME.series[0], times, values: history.map((sample) => sample.mature) },
+      { label: 'Беременности', color: CHART_THEME.series[1], times, values: history.map((sample) => sample.pregnancies) },
+    ]);
+    this._biomassChart.setData(this._compared((sample) => sample.biomass));
     this._foodChart.setData(this._compared((sample) => sample.food));
     this._energyChart.setData(this._compared((sample) => sample.averageEnergyRatio));
     this._birthsChart.setData([

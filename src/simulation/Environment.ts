@@ -44,6 +44,37 @@ export class Environment {
     return false;
   }
 
+  /** Точное пересечение отрезка с кругом или прямоугольником, без дискретного семплирования. */
+  public hasLineOfSight(a: MutablePoint, b: MutablePoint): boolean {
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    for (const obstacle of this.obstacles) {
+      if (obstacle.kind === 'circle') {
+        const lengthSq = dx * dx + dz * dz;
+        const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1,
+          ((obstacle.x - a.x) * dx + (obstacle.z - a.z) * dz) / lengthSq));
+        if ((a.x + dx * t - obstacle.x) ** 2 + (a.z + dz * t - obstacle.z) ** 2 <= obstacle.radius ** 2) return false;
+      } else {
+        let low = 0;
+        let high = 1;
+        for (const [origin, direction, center, half] of [
+          [a.x, dx, obstacle.x, obstacle.width / 2], [a.z, dz, obstacle.z, obstacle.depth / 2],
+        ] as [number, number, number, number][]) {
+          if (Math.abs(direction) < 1e-12) {
+            if (Math.abs(origin - center) > half) { low = 2; break; }
+          } else {
+            const first = (center - half - origin) / direction;
+            const second = (center + half - origin) / direction;
+            low = Math.max(low, Math.min(first, second));
+            high = Math.min(high, Math.max(first, second));
+          }
+        }
+        if (low <= high) return false;
+      }
+    }
+    return true;
+  }
+
   /**
    * Выталкивает круг из препятствий на ближайшую границу
    * @param normal получает нормаль последнего столкновения

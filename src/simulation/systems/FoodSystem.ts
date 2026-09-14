@@ -10,6 +10,11 @@ export class FoodSystem {
    */
   public spawn(world: World, dt: number, time: number): void {
     const { environment } = world;
+    for (const food of world.food) {
+      food.energy = Math.min(food.maxEnergy, food.energy + world.config.resources.regrowthPerSecond
+        * environment.fertilityAt(food.x, food.z) * environment.seasonMultiplier(time) * dt);
+      food.eaten = food.energy < Math.min(1, food.maxEnergy);
+    }
     world.foodSpawnAccumulator +=
       world.config.food.spawnPerSecond * environment.seasonMultiplier(time) * environment.maxFertility * dt;
 

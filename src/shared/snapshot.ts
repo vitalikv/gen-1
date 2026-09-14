@@ -1,12 +1,13 @@
 import { GENE_NAMES, type GeneName, type GeneValues } from './genes';
+import type { LifeState } from './life';
 
-export const ORGANISM_ACTIONS = ['wandering', 'seeking', 'eating', 'avoiding'] as const;
+export const ORGANISM_ACTIONS = ['wandering', 'seeking', 'eating', 'avoiding', 'resting', 'seekingMate', 'mating', 'remembering'] as const;
 
 export type OrganismAction = (typeof ORGANISM_ACTIONS)[number];
 
 /**
  * Упакованные поля организма в SimulationSnapshot.organisms
- * [x, z, heading, energyRatio, action, ...гены в порядке GENE_NAMES]
+ * [x, z, heading, energyRatio, action, sex, bodySize, pregnant, ...гены в порядке GENE_NAMES]
  */
 export const ORGANISM_FIELD = {
   x: 0,
@@ -14,9 +15,12 @@ export const ORGANISM_FIELD = {
   heading: 2,
   energyRatio: 3,
   action: 4,
+  sex: 5,
+  bodySize: 6,
+  pregnant: 7,
 } as const;
 
-const ORGANISM_GENE_OFFSET = 5;
+const ORGANISM_GENE_OFFSET = 8;
 
 export const ORGANISM_STRIDE = ORGANISM_GENE_OFFSET + GENE_NAMES.length;
 
@@ -24,8 +28,8 @@ export function organismGeneField(name: GeneName): number {
   return ORGANISM_GENE_OFFSET + GENE_NAMES.indexOf(name);
 }
 
-/** Упакованные поля пищи: [x, z] */
-export const FOOD_STRIDE = 2;
+/** Упакованные поля растения: [x, z, доля оставшейся биомассы] */
+export const FOOD_STRIDE = 3;
 
 /** Снимок состояния симуляции для отображения; массивы передаются с передачей владения */
 export interface SimulationSnapshot {
@@ -54,6 +58,8 @@ export interface OrganismDetails {
   capacity: number;
   action: OrganismAction;
   genes: GeneValues;
+  life: LifeState;
+  mature: boolean;
 }
 
 /** Точка истории эксперимента */
@@ -68,4 +74,10 @@ export interface StatsSample {
   averageGenes: GeneValues;
   /** Сезонный множитель плодородия */
   season: number;
+  males: number;
+  females: number;
+  mature: number;
+  pregnancies: number;
+  biomass: number;
+  starving: number;
 }

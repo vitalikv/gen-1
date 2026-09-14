@@ -1,9 +1,10 @@
 import { GENE_DEFINITIONS, GENE_NAMES, type GeneName } from '@/shared/genes';
 
 /** Признак, которым окрашиваются организмы */
-export type ColorMode = 'energy' | GeneName;
+export type ColorMode = 'energy' | 'sex' | GeneName;
 
 export const COLOR_MODE_OPTIONS: readonly { value: ColorMode; label: string }[] = [
+  { value: 'sex', label: 'Пол' },
   { value: 'energy', label: 'Энергия' },
   ...GENE_NAMES.map((name) => ({ value: name, label: GENE_DEFINITIONS[name].label })),
 ];
@@ -21,7 +22,7 @@ type Listener = (state: Readonly<ViewSettingsState>) => void;
  * Настройки отображения, общие для интерфейса и визуализации
  */
 export class ViewSettings {
-  private _state: ViewSettingsState = { colorMode: 'speed', showPerception: false, chartGene: 'speed' };
+  private _state: ViewSettingsState = { colorMode: 'sex', showPerception: false, chartGene: 'speed' };
   private readonly _listeners = new Set<Listener>();
 
   public get state(): Readonly<ViewSettingsState> {

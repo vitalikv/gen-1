@@ -12,6 +12,7 @@ function sample(time: number): StatsSample {
     averageEnergyRatio: 0.5,
     averageGenes: { speed: 1, perception: 1, size: 1, reproductionThreshold: 0.5, exploration: 0.5 },
     season: 1,
+    males: 0, females: 0, mature: 0, pregnancies: 0, biomass: 0, starving: 0,
   };
 }
 

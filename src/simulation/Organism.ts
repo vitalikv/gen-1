@@ -1,5 +1,6 @@
 import type { OrganismAction } from '@/shared/snapshot';
 import type { Genome } from './Genome';
+import type { LifeState, Sex } from '@/shared/life';
 
 export interface OrganismParams {
   id: number;
@@ -11,6 +12,8 @@ export interface OrganismParams {
   heading: number;
   energy: number;
   capacityPerSize: number;
+  sex?: Sex;
+  fatherId?: number | null;
 }
 
 /**
@@ -36,6 +39,7 @@ export class Organism {
   /** Оставшееся время обхода препятствия, в течение которого пища не преследуется */
   public avoidTimer = 0;
   public alive = true;
+  public life: LifeState;
 
   public constructor(params: OrganismParams) {
     this.id = params.id;
@@ -47,9 +51,17 @@ export class Organism {
     this.z = params.z;
     this.heading = params.heading;
     this.energy = Math.min(params.energy, this.capacity);
+    this.life = {
+      sex: params.sex ?? 'female', fatherId: params.fatherId ?? null,
+      growth: 1, health: 1, stamina: 1, stomach: 0, recovery: 0, pregnancy: null,
+      targetFoodId: null, mateId: null, memory: null, reason: 'Исследует окружение', deathCause: null,
+    };
   }
 
   public get energyRatio(): number {
     return this.energy / this.capacity;
   }
+
+  public get bodySize(): number { return this.genome.get('size') * Math.sqrt(this.life.growth); }
+  public get sex(): Sex { return this.life.sex; }
 }

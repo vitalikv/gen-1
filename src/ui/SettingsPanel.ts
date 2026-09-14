@@ -67,7 +67,7 @@ const SECTIONS: Section[] = [
         set: (c, v) => applyZonePreset(c, v as ZonePresetId),
       },
       {
-        kind: 'number', label: 'Пища в секунду', restart: false, min: 0, max: 1000, step: 1,
+        kind: 'number', label: 'Новые растения в секунду', restart: false, min: 0, max: 1000, step: 1,
         get: (c) => c.food.spawnPerSecond, set: (c, v) => (c.food.spawnPerSecond = v),
       },
       {
@@ -98,6 +98,38 @@ const SECTIONS: Section[] = [
     title: 'Жизнь и мутации',
     fields: [
       {
+        kind: 'number', label: 'Возраст зрелости, с', restart: false, min: 0, max: 3600, step: 1,
+        get: (c) => c.lifecycle.minReproductionAge, set: (c, v) => (c.lifecycle.minReproductionAge = v),
+      },
+      {
+        kind: 'number', label: 'Продолжительность роста, с', restart: false, min: 1, max: 3600, step: 1,
+        get: (c) => c.physiology.growthDuration, set: (c, v) => (c.physiology.growthDuration = v),
+      },
+      {
+        kind: 'number', label: 'Беременность, с', restart: false, min: 1, max: 3600, step: 1,
+        get: (c) => c.reproduction.gestationDuration, set: (c, v) => (c.reproduction.gestationDuration = v),
+      },
+      {
+        kind: 'number', label: 'Восстановление самки, с', restart: false, min: 0, max: 3600, step: 1,
+        get: (c) => c.reproduction.femaleRecovery, set: (c, v) => (c.reproduction.femaleRecovery = v),
+      },
+      {
+        kind: 'number', label: 'Восстановление самца, с', restart: false, min: 0, max: 3600, step: 1,
+        get: (c) => c.reproduction.maleRecovery, set: (c, v) => (c.reproduction.maleRecovery = v),
+      },
+      {
+        kind: 'number', label: 'Переваривание в секунду', restart: false, min: 0.1, max: 100, step: 0.1,
+        get: (c) => c.physiology.digestionPerSecond, set: (c, v) => (c.physiology.digestionPerSecond = v),
+      },
+      {
+        kind: 'number', label: 'Восстановление растений / с', restart: false, min: 0, max: 100, step: 0.1,
+        get: (c) => c.resources.regrowthPerSecond, set: (c, v) => (c.resources.regrowthPerSecond = v),
+      },
+      {
+        kind: 'number', label: 'Память о пище, с', restart: false, min: 0, max: 3600, step: 1,
+        get: (c) => c.perception.memoryDuration, set: (c, v) => (c.perception.memoryDuration = v),
+      },
+      {
         kind: 'number', label: 'Вероятность мутации', restart: false, min: 0, max: 1, step: 0.01,
         get: (c) => c.mutation.rate, set: (c, v) => (c.mutation.rate = v),
       },
@@ -106,7 +138,7 @@ const SECTIONS: Section[] = [
         get: (c) => c.mutation.sigmaScale, set: (c, v) => (c.mutation.sigmaScale = v),
       },
       {
-        kind: 'number', label: 'Предельный возраст, с', restart: false, min: 1, max: 3600, step: 1,
+        kind: 'number', label: 'Начало старения, с', restart: false, min: 1, max: 3600, step: 1,
         get: (c) => c.lifecycle.maxAge, set: (c, v) => (c.lifecycle.maxAge = v),
       },
       {

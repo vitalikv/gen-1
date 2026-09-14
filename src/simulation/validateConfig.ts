@@ -60,6 +60,17 @@ export function validateConfig(config: SimulationConfig): void {
   requireNumber('mutation.sigmaScale', config.mutation.sigmaScale);
   requireNumber('behavior.turnRate', config.behavior.turnRate);
   requireNumber('behavior.minWanderSpeedShare', config.behavior.minWanderSpeedShare);
+  for (const key of ['digestionPerSecond', 'stomachCapacityShare', 'growthDuration', 'growthCostPerSize',
+    'staminaDrain', 'staminaRecovery', 'starvationDamage'] as const) {
+    requireNumber(`physiology.${key}`, config.physiology[key], { positive: true });
+  }
+  for (const key of ['gestationDuration', 'femaleRecovery', 'maleRecovery', 'pregnancyCostPerSize'] as const) {
+    requireNumber(`reproduction.${key}`, config.reproduction[key], { positive: key === 'gestationDuration' });
+  }
+  requireNumber('resources.regrowthPerSecond', config.resources.regrowthPerSecond);
+  requireNumber('perception.memoryDuration', config.perception.memoryDuration);
+  requireNumber('perception.fieldOfView', config.perception.fieldOfView, { positive: true });
+  if (config.perception.fieldOfView > Math.PI * 2) fail('perception.fieldOfView', config.perception.fieldOfView);
 
   config.environment.obstacles.forEach((shape, i) => requireShape(`environment.obstacles[${i}]`, shape));
   requireNumber('environment.baseFertility', config.environment.baseFertility);

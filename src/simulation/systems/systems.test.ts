@@ -36,6 +36,7 @@ function addOrganism(world: World, genome: Genome, x = 0, z = 0, energy = 50): O
   });
   world.addOffspring({ parent, genome, x, z, heading: 0, energy });
   world.commitStep();
+  world.organisms.at(-1)!.life.growth = 1;
   return world.organisms.at(-1)!;
 }
 
@@ -43,7 +44,7 @@ describe('BehaviorSystem', () => {
   it('двигается к ближайшей пище в радиусе восприятия и достигает ее', () => {
     const world = emptyWorld();
     const organism = addOrganism(world, initialGenes({ perception: 20, speed: 10, size: 1 }));
-    world.food.push({ id: 1, x: 15, z: 0, energy: 25, eaten: false }, { id: 2, x: -18, z: 0, energy: 25, eaten: false });
+    world.food.push({ id: 1, x: 15, z: 0, energy: 25, maxEnergy: 25, eaten: false }, { id: 2, x: -18, z: 0, energy: 25, maxEnergy: 25, eaten: false });
 
     const behavior = new BehaviorSystem();
     const foodSystem = new FoodSystem();
@@ -86,48 +87,37 @@ describe('EnergySystem', () => {
     expect(organism.age).toBe(0.25);
   });
 
-  it('ограничивает полученную энергию вместимостью', () => {
+  it('помещает пищу в желудок вместо мгновенного получения энергии', () => {
     const world = emptyWorld();
     const organism = addOrganism(world, initialGenes({ size: 1 }), 0, 0, 90);
-    const food = { id: 1, x: 0, z: 0, energy: 50, eaten: false };
+    const food = { id: 1, x: 0, z: 0, energy: 50, maxEnergy: 50, eaten: false };
 
     new EnergySystem().eat(organism, food);
 
-    expect(organism.energy).toBe(organism.capacity);
+    expect(organism.energy).toBe(90);
+    expect(organism.life.stomach).toBe(50);
     expect(food.eaten).toBe(true);
   });
 
-  it('убивает при истощении и при достижении предельного возраста', () => {
+  it('голод постепенно повреждает здоровье; старение не является жёстким пределом', () => {
     const world = emptyWorld();
     const energySystem = new EnergySystem();
 
     const starving = addOrganism(world, initialGenes(), 0, 0, 0.001);
     energySystem.update(world, starving, 0.25);
+    expect(starving.alive).toBe(true);
+    expect(starving.life.health).toBeLessThan(1);
+    for (let i = 0; i < 40; i++) energySystem.update(world, starving, 0.25);
     expect(starving.alive).toBe(false);
 
     const old = addOrganism(world, initialGenes(), 0, 0, 100);
     old.age = world.config.lifecycle.maxAge;
     energySystem.update(world, old, 0.25);
-    expect(old.alive).toBe(false);
+    expect(old.alive).toBe(true);
   });
 });
 
 describe('EvolutionSystem', () => {
-  it('сохраняет энергетический баланс размножения', () => {
-    const world = emptyWorld();
-    const parent = addOrganism(world, initialGenes({ reproductionThreshold: 0.5 }), 0, 0, 90);
-    parent.age = 10;
-    const before = parent.energy;
-
-    const child = new EvolutionSystem().tryReproduce(world, parent);
-
-    expect(child).not.toBeNull();
-    const cost = world.config.lifecycle.reproductionCostPerSize * parent.genome.get('size');
-    expect(parent.energy + child!.energy + cost).toBeCloseTo(before, 10);
-    expect(child!.parentId).toBe(parent.id);
-    expect(child!.generation).toBe(parent.generation + 1);
-  });
-
   it('не размножается ниже порога энергии, до минимального возраста и при пределе популяции', () => {
     const evolution = new EvolutionSystem();
 
@@ -147,7 +137,7 @@ describe('EvolutionSystem', () => {
 });
 
 describe('World', () => {
-  it('удаляет погибших и съеденное, добавляет родившихся в конец с сохранением порядка', () => {
+  it('удаляет погибших, сохраняет растения и добавляет родившихся в конец', () => {
     const world = World.create(createTestConfig({ population: { initial: 5, max: 100 } }));
     const ids = world.organisms.map((organism) => organism.id);
     world.organisms[1]!.alive = false;
@@ -167,7 +157,7 @@ describe('World', () => {
 
     expect(world.organisms.map((organism) => organism.id)).toEqual([ids[0], ids[2], ids[4], child.id]);
     expect(world.getOrganism(ids[1]!)).toBeNull();
-    expect(world.food.length).toBe(foodBefore - 1);
+    expect(world.food.length).toBe(foodBefore);
     expect(world.deathsTotal).toBe(2);
     expect(world.birthsTotal).toBe(1);
   });

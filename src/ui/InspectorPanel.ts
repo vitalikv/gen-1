@@ -60,11 +60,22 @@ export class InspectorPanel {
       list.append(term, description);
     };
 
-    add('Родитель', details.parentId === null ? '—' : `#${details.parentId}`);
+    add('Пол', details.life.sex === 'male' ? 'Мужской ♂' : 'Женский ♀');
+    add('Мать', details.parentId === null ? '—' : `#${details.parentId}`);
+    add('Отец', details.life.fatherId === null ? '—' : `#${details.life.fatherId}`);
+    add('Стадия', details.mature ? 'Взрослый' : 'Детёныш');
+    add('Рост', `${Math.round(details.life.growth * 100)}%`);
+    add('Здоровье', `${Math.round(details.life.health * 100)}%`);
+    add('Выносливость', `${Math.round(details.life.stamina * 100)}%`);
+    add('Пища в желудке', details.life.stomach.toFixed(1));
+    add('Восстановление', `${details.life.recovery.toFixed(1)} с`);
+    if (details.life.pregnancy) add('До рождения', details.life.pregnancy.remaining > 0
+      ? `${details.life.pregnancy.remaining.toFixed(1)} с` : 'Ожидание места в популяции');
     add('Поколение', String(details.generation));
     add('Возраст', `${details.age.toFixed(1)} с`);
     add('Энергия', `${details.energy.toFixed(0)} / ${details.capacity.toFixed(0)}`);
     add('Действие', ACTION_LABELS[details.action]);
+    add('Причина', details.life.reason);
 
     const genes = document.createElement('div');
     genes.className = 'inspector-panel__genes';

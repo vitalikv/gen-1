@@ -6,6 +6,10 @@ export const ACTION_LABELS: Readonly<Record<OrganismAction, string>> = {
   seeking: 'Идет к пище',
   eating: 'Ест',
   avoiding: 'Обходит препятствие',
+  resting: 'Отдыхает',
+  seekingMate: 'Ищет партнёра',
+  mating: 'Спаривается',
+  remembering: 'Возвращается к пище',
 };
 
 export function formatGene(name: GeneName, value: number): string {

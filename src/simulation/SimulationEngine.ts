@@ -17,10 +17,12 @@ import {
 import { StatisticsCollector } from './StatisticsCollector';
 import { BehaviorSystem } from './systems/BehaviorSystem';
 import { EnergySystem } from './systems/EnergySystem';
-import { EvolutionSystem } from './systems/EvolutionSystem';
+import { EvolutionSystem, isMature } from './systems/EvolutionSystem';
 import { FoodSystem } from './systems/FoodSystem';
 import { validateConfig } from './validateConfig';
 import { World } from './World';
+import type { Food } from './World';
+import type { Organism } from './Organism';
 
 /** Максимальное отставание по реальному времени, которое догоняет симуляция */
 const MAX_BACKLOG_REAL_SECONDS = 0.25;
@@ -243,6 +245,9 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       organismData[offset + ORGANISM_FIELD.heading] = organism.heading;
       organismData[offset + ORGANISM_FIELD.energyRatio] = organism.energyRatio;
       organismData[offset + ORGANISM_FIELD.action] = ORGANISM_ACTIONS.indexOf(organism.action);
+      organismData[offset + ORGANISM_FIELD.sex] = organism.sex === 'male' ? 0 : 1;
+      organismData[offset + ORGANISM_FIELD.bodySize] = organism.bodySize;
+      organismData[offset + ORGANISM_FIELD.pregnant] = organism.life.pregnancy ? 1 : 0;
       for (let g = 0; g < GENE_NAMES.length; g++) {
         organismData[offset + GENE_FIELDS[g]!] = organism.genome.get(GENE_NAMES[g]!);
       }
@@ -252,6 +257,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     for (let i = 0; i < food.length; i++) {
       foodData[i * FOOD_STRIDE] = food[i]!.x;
       foodData[i * FOOD_STRIDE + 1] = food[i]!.z;
+      foodData[i * FOOD_STRIDE + 2] = food[i]!.maxEnergy > 0 ? food[i]!.energy / food[i]!.maxEnergy : 0;
     }
 
     return {
@@ -281,6 +287,8 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       capacity: organism.capacity,
       action: organism.action,
       genes: organism.genome.toValues(),
+      life: structuredClone(organism.life),
+      mature: isMature(this._requireWorld(), organism),
     };
   }
 
@@ -291,14 +299,38 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
 
     this._foodSystem.spawn(world, dt, this._step * dt);
     this._foodSystem.rebuildIndex(world);
-
-    for (const organism of world.organisms) {
-      const reachableFood = this._behaviorSystem.update(world, organism, dt);
-      if (reachableFood) {
-        this._energySystem.eat(organism, reachableFood);
+    world.rebuildOrganismIndex();
+    const intents = world.organisms.map((organism) => this._behaviorSystem.plan(world, organism, dt));
+    const claims = new Map<Food, Organism[]>();
+    for (let i = 0; i < world.organisms.length; i++) {
+      const organism = world.organisms[i]!;
+      const food = this._behaviorSystem.execute(world, organism, intents[i]!, dt);
+      if (food) {
+        const contenders = claims.get(food) ?? [];
+        contenders.push(organism);
+        claims.set(food, contenders);
       }
+    }
+    // При одновременном доступе очередь разыгрывается заново воспроизводимым PRNG.
+    for (const [food, contenders] of claims) {
+      for (let i = contenders.length - 1; i > 0; i--) {
+        const j = Math.floor(world.random.next() * (i + 1));
+        [contenders[i], contenders[j]] = [contenders[j]!, contenders[i]!];
+      }
+      for (const organism of contenders) this._energySystem.eat(organism, food, world.config.physiology.stomachCapacityShare);
+    }
+    for (const organism of world.organisms) {
       this._energySystem.update(world, organism, dt);
       this._evolutionSystem.tryReproduce(world, organism);
+    }
+    const matingOrder = world.organisms.filter((organism) => organism.life.mateId !== null);
+    for (let i = matingOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(world.random.next() * (i + 1));
+      [matingOrder[i], matingOrder[j]] = [matingOrder[j]!, matingOrder[i]!];
+    }
+    for (const organism of matingOrder) {
+      const mate = world.getOrganism(organism.life.mateId!);
+      if (mate && mate.action === 'seekingMate') this._evolutionSystem.tryMate(world, organism, mate);
     }
 
     world.commitStep();

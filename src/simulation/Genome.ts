@@ -38,6 +38,15 @@ export class Genome {
     return { ...this._values };
   }
 
+  /** Независимое наследование каждого признака от одного из двух родителей. */
+  public recombine(other: Genome, random: SeededRandom, rate: number, sigmaScale: number): Genome {
+    const values = {} as GeneValues;
+    for (const name of GENE_NAMES) {
+      values[name] = random.next() < 0.5 ? this.get(name) : other.get(name);
+    }
+    return new Genome(values).mutate(random, rate, sigmaScale);
+  }
+
   /** gene_child = clamp(gene_parent + Normal(0, sigma), min, max) с вероятностью rate */
   public mutate(random: SeededRandom, rate: number, sigmaScale: number): Genome {
     const values = {} as GeneValues;

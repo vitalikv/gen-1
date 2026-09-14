@@ -2,6 +2,7 @@ import type { SimulationConfig } from '@/shared/config';
 import { OBSTACLE_PRESETS, ZONE_PRESETS } from '@/shared/environment';
 import { downsampleHistory } from '@/shared/history';
 import type { StatsSample } from '@/shared/snapshot';
+import { MODEL_VERSION } from '@/shared/savedState';
 import { formatTime } from './charts/chartTheme';
 
 /** Запись завершенного или текущего запуска для сравнения */
@@ -18,7 +19,7 @@ export interface RunRecord {
   colorSlot: number | null;
 }
 
-const STORAGE_KEY = 'gen-1:runs';
+const STORAGE_KEY = `gen-1:runs:v${MODEL_VERSION}`;
 export const MAX_RUNS = 8;
 export const MAX_VISIBLE_RUNS = 3;
 const MAX_RUN_SAMPLES = 600;

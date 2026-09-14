@@ -5,17 +5,22 @@ import { Environment, type MutablePoint } from './Environment';
 import { Genome } from './Genome';
 import { Organism } from './Organism';
 import { SpatialIndex } from './SpatialIndex';
+import type { Sex } from '@/shared/life';
 
 export interface Food {
   readonly id: number;
   x: number;
   z: number;
   energy: number;
+  maxEnergy: number;
   eaten: boolean;
 }
 
 export interface OffspringParams {
   parent: Organism;
+  fatherId?: number;
+  generation?: number;
+  sex?: Sex;
   genome: Genome;
   x: number;
   z: number;
@@ -40,6 +45,7 @@ export class World {
   public readonly organisms: Organism[] = [];
   public readonly food: Food[] = [];
   public readonly foodIndex: SpatialIndex<Food>;
+  public readonly organismIndex: SpatialIndex<Organism>;
   public environment: Environment;
 
   public birthsTotal = 0;
@@ -58,6 +64,7 @@ export class World {
     this.config = config;
     this.random = new SeededRandom(config.seed);
     this.foodIndex = new SpatialIndex(config.world.width, config.world.depth, FOOD_CELL_SIZE);
+    this.organismIndex = new SpatialIndex(config.world.width, config.world.depth, FOOD_CELL_SIZE);
     this.environment = new Environment(config);
   }
 
@@ -76,6 +83,7 @@ export class World {
       const organism = new Organism({
         id: world._nextOrganismId++,
         parentId: null,
+        sex: i % 2 === 0 ? 'female' : 'male',
         generation: 0,
         genome,
         x: point.x,
@@ -85,6 +93,7 @@ export class World {
         capacityPerSize: config.energy.capacityPerSize,
       });
       world._addOrganism(organism);
+      organism.age = config.lifecycle.minReproductionAge + world.random.range(0, config.lifecycle.maxAge * 0.3);
     }
 
     return world;
@@ -116,11 +125,12 @@ export class World {
       organism.currentSpeed = item.currentSpeed;
       organism.action = item.action;
       organism.avoidTimer = item.avoidTimer;
+      organism.life = structuredClone(item.life);
       world._addOrganism(organism);
     }
 
     for (const item of saved.food) {
-      world.food.push({ ...item, eaten: false });
+      world.food.push({ ...item });
     }
 
     return world;
@@ -134,9 +144,16 @@ export class World {
     return this.config.world.depth / 2;
   }
 
-  /** Живые организмы с учетом рождений текущего шага */
+  /** Занятые места с учётом ожидающих рождений; погибшие освобождают место при commitStep. */
   public get populationCount(): number {
     return this.organisms.length + this._pendingBirths.length;
+  }
+
+  public rebuildOrganismIndex(): void {
+    this.organismIndex.clear();
+    for (const organism of this.organisms) {
+      if (organism.alive) this.organismIndex.insert(organism);
+    }
   }
 
   public getOrganism(id: number): Organism | null {
@@ -166,7 +183,8 @@ export class World {
       return null;
     }
 
-    const food: Food = { id: this._nextFoodId++, x, z, energy: this.config.food.energy, eaten: false };
+    const food: Food = { id: this._nextFoodId++, x, z, energy: this.config.food.energy,
+      maxEnergy: this.config.food.energy, eaten: this.config.food.energy <= 0 };
     this.food.push(food);
     return food;
   }
@@ -200,7 +218,9 @@ export class World {
     const organism = new Organism({
       id: this._nextOrganismId++,
       parentId: params.parent.id,
-      generation: params.parent.generation + 1,
+      fatherId: params.fatherId ?? null,
+      sex: params.sex ?? (this.random.next() < 0.5 ? 'female' : 'male'),
+      generation: params.generation ?? params.parent.generation + 1,
       genome: params.genome,
       x: point.x,
       z: point.z,
@@ -209,6 +229,7 @@ export class World {
       capacityPerSize: this.config.energy.capacityPerSize,
     });
     this._pendingBirths.push(organism);
+    organism.life.growth = 0.4;
     this._organismsById.set(organism.id, organism);
     this.birthsTotal++;
     return organism;
@@ -222,7 +243,7 @@ export class World {
     return Math.min(Math.max(z, -this.halfDepth), this.halfDepth);
   }
 
-  /** Завершение шага: удаляет погибших и съеденное, добавляет родившихся с сохранением порядка */
+  /** Удаляет погибших и пустые источники, сохраняет истощённые растения для отрастания. */
   public commitStep(): void {
     let aliveCount = 0;
     for (const organism of this.organisms) {
@@ -242,7 +263,7 @@ export class World {
 
     let foodCount = 0;
     for (const food of this.food) {
-      if (!food.eaten) {
+      if (food.maxEnergy > 0) {
         this.food[foodCount++] = food;
       }
     }
@@ -271,8 +292,9 @@ export class World {
         currentSpeed: organism.currentSpeed,
         action: organism.action,
         avoidTimer: organism.avoidTimer,
+        life: structuredClone(organism.life),
       })),
-      food: this.food.map(({ id, x, z, energy }) => ({ id, x, z, energy })),
+      food: this.food.map((food) => ({ ...food })),
     };
   }
 
