@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    /* Без DOM: модель мира и Worker не должны зависеть от браузерного окна */
+    "lib": ["ES2022", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/worker/**/*.worker.ts", "src/simulation"],
+  "exclude": ["src/**/*.test.ts"]
+}
