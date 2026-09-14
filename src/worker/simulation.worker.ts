@@ -1,25 +1,18 @@
 import { SimulationEngine } from '@/simulation/SimulationEngine';
 import type { SimulationCommand, SimulationResponse } from '@/shared/protocol';
+import { SimulationRuntime } from './SimulationRuntime';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
-const engine = SimulationEngine.inst('simulation');
 
 function send(response: SimulationResponse): void {
   scope.postMessage(response);
 }
 
-function handleCommand(command: SimulationCommand): void {
-  switch (command.type) {
-    case 'init':
-      engine.init(command.config);
-      send({ type: 'ready', step: engine.step });
-      break;
-  }
-}
+const runtime = new SimulationRuntime(SimulationEngine.inst('simulation'), send);
 
 scope.addEventListener('message', (event: MessageEvent<SimulationCommand>) => {
   try {
-    handleCommand(event.data);
+    runtime.handleCommand(event.data);
   } catch (error) {
     send({ type: 'error', message: error instanceof Error ? error.message : String(error) });
   }

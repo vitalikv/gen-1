@@ -14,8 +14,28 @@ export interface SimulationConfig {
   dt: number;
 }
 
-/** Команды главного потока для Worker */
-export type SimulationCommand = { type: 'init'; config: SimulationConfig };
+/** Снимок состояния симуляции для отображения */
+export interface SimulationSnapshot {
+  /** Номер последнего рассчитанного шага */
+  step: number;
+  /** Модельное время, секунды */
+  time: number;
+  running: boolean;
+  /** Множитель скорости модельного времени относительно реального */
+  speed: number;
+}
+
+/** Команды главного потока для Worker; применяются между шагами расчета */
+export type SimulationCommand =
+  | { type: 'init'; config: SimulationConfig }
+  | { type: 'start' }
+  | { type: 'pause' }
+  | { type: 'step' }
+  | { type: 'setSpeed'; speed: number }
+  | { type: 'reset' };
 
 /** Ответы Worker главному потоку */
-export type SimulationResponse = { type: 'ready'; step: number } | { type: 'error'; message: string };
+export type SimulationResponse =
+  | { type: 'ready'; snapshot: SimulationSnapshot }
+  | { type: 'snapshot'; snapshot: SimulationSnapshot }
+  | { type: 'error'; message: string };

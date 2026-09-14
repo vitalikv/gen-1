@@ -6,5 +6,6 @@
     "types": ["vite/client"]
   },
   "include": ["src"],
-  "exclude": ["src/simulation", "src/worker/**/*.worker.ts", "src/**/*.test.ts"]
+  /* Код потока Worker проверяется в tsconfig.worker.json; SimulationBridge подключается через импорт */
+  "exclude": ["src/simulation", "src/worker", "src/**/*.test.ts"]
 }

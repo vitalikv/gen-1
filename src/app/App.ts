@@ -2,6 +2,7 @@ import { ContextSingleton } from '@/core/ContextSingleton';
 import { DEFAULT_SIMULATION_CONFIG } from '@/core/config';
 import { SceneManager } from '@/rendering/SceneManager';
 import type { SimulationResponse } from '@/shared/protocol';
+import { ControlPanel } from '@/ui/ControlPanel';
 import { SimulationBridge } from '@/worker/SimulationBridge';
 
 /**
@@ -9,6 +10,7 @@ import { SimulationBridge } from '@/worker/SimulationBridge';
  */
 export class App extends ContextSingleton<App> {
   private _unsubscribe: (() => void) | null = null;
+  private _controlPanel: ControlPanel | null = null;
 
   public start(container: HTMLElement): void {
     if (this._unsubscribe) {
@@ -22,10 +24,13 @@ export class App extends ContextSingleton<App> {
     const bridge = SimulationBridge.inst('main');
     bridge.connect();
     this._unsubscribe = bridge.subscribe((response) => this._onSimulationResponse(response));
+    this._controlPanel = new ControlPanel(container, bridge);
     bridge.send({ type: 'init', config });
   }
 
   public dispose(): void {
+    this._controlPanel?.dispose();
+    this._controlPanel = null;
     this._unsubscribe?.();
     this._unsubscribe = null;
     SimulationBridge.inst('main').disconnect();
@@ -35,7 +40,7 @@ export class App extends ContextSingleton<App> {
   private _onSimulationResponse(response: SimulationResponse): void {
     switch (response.type) {
       case 'ready':
-        console.info(`[Gen-1] Симуляция готова, шаг ${response.step}`);
+        console.info(`[Gen-1] Симуляция готова, шаг ${response.snapshot.step}`);
         break;
       case 'error':
         console.error(`[Gen-1] Ошибка симуляции: ${response.message}`);

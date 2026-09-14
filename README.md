@@ -17,11 +17,12 @@ npm run build      # проверка типов и сборка в dist/
 ```text
 src/
   app/           # App и запуск
-  core/          # ContextSingleton, конфигурация
-  simulation/    # модель мира, без Three.js и DOM
-  worker/        # точка входа Worker, SimulationBridge
+  core/          # ContextSingleton, SeededRandom, конфигурация
+  simulation/    # SimulationEngine и модель мира, без Three.js и DOM
+  worker/        # точка входа Worker, SimulationRuntime, SimulationBridge
   rendering/     # SceneManager и отображение
-  shared/        # типы команд и ответов
+  ui/            # панель управления
+  shared/        # типы команд, ответов и снимков
 ```
 
-Код в `src/simulation` и `*.worker.ts` проверяется через `tsconfig.worker.json` без библиотеки DOM.
+Код в `src/simulation` и потока Worker проверяется через `tsconfig.worker.json` без библиотеки DOM. `SimulationBridge` работает в главном потоке.

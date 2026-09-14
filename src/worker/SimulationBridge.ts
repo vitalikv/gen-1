@@ -1,5 +1,5 @@
 import { ContextSingleton } from '@/core/ContextSingleton';
-import type { SimulationCommand, SimulationResponse } from '@/shared/protocol';
+import type { SimulationCommand, SimulationResponse, SimulationSnapshot } from '@/shared/protocol';
 
 export type SimulationListener = (response: SimulationResponse) => void;
 
@@ -8,7 +8,13 @@ export type SimulationListener = (response: SimulationResponse) => void;
  */
 export class SimulationBridge extends ContextSingleton<SimulationBridge> {
   private _worker: Worker | null = null;
+  private _latestSnapshot: SimulationSnapshot | null = null;
   private readonly _listeners = new Set<SimulationListener>();
+
+  /** Последний полученный снимок; более старые не хранятся */
+  public get latestSnapshot(): SimulationSnapshot | null {
+    return this._latestSnapshot;
+  }
 
   public connect(): void {
     if (this._worker) {
@@ -39,10 +45,15 @@ export class SimulationBridge extends ContextSingleton<SimulationBridge> {
   public disconnect(): void {
     this._worker?.terminate();
     this._worker = null;
+    this._latestSnapshot = null;
     this._listeners.clear();
   }
 
   private _emit(response: SimulationResponse): void {
+    if (response.type === 'ready' || response.type === 'snapshot') {
+      this._latestSnapshot = response.snapshot;
+    }
+
     for (const listener of this._listeners) {
       listener(response);
     }
