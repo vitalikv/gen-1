@@ -38,12 +38,15 @@ export class SimulationRuntime {
   }
 
   public handleCommand(command: SimulationCommand): void {
+    let configChanged = false;
+
     switch (command.type) {
       case 'init': {
         this._engine.init(command.config);
         this._selectedId = null;
         const snapshot = this._engine.getSnapshot();
         this._send({ type: 'ready', snapshot }, snapshotTransfer(snapshot));
+        configChanged = true;
         break;
       }
       case 'start':
@@ -61,12 +64,31 @@ export class SimulationRuntime {
       case 'reset':
         this._engine.reset();
         this._selectedId = null;
+        configChanged = true;
+        break;
+      case 'updateConfig':
+        this._engine.updateConfig(command.config, command.reset);
+        if (command.reset) {
+          this._selectedId = null;
+        }
+        configChanged = true;
         break;
       case 'inspectOrganism':
         this._selectedId = command.id;
         break;
+      case 'saveState':
+        this._send({ type: 'state', state: this._engine.saveState() });
+        break;
+      case 'loadState':
+        this._engine.loadState(command.state);
+        this._selectedId = null;
+        configChanged = true;
+        break;
     }
 
+    if (configChanged) {
+      this._send({ type: 'config', ...this._engine.getConfigState() });
+    }
     this._syncTimer();
     this._sendUpdates(true);
   }

@@ -10,6 +10,8 @@ export const DEFAULT_SIMULATION_CONFIG: Readonly<SimulationConfig> = {
   lifecycle: { maxAge: 90, minReproductionAge: 3, offspringEnergyShare: 0.5, reproductionCostPerSize: 10 },
   mutation: { rate: 0.2, sigmaScale: 1 },
   behavior: { turnRate: 2, minWanderSpeedShare: 0.1 },
+  environment: { obstaclePreset: 'none', obstacles: [], zonePreset: 'uniform', baseFertility: 1, zones: [] },
+  season: { enabled: false, period: 120, amplitude: 0.6 },
 };
 
 export const MIN_SIMULATION_SPEED = 0.25;

@@ -33,6 +33,8 @@ export class Organism {
   /** Фактическая скорость за последний шаг */
   public currentSpeed = 0;
   public action: OrganismAction = 'wandering';
+  /** Оставшееся время обхода препятствия, в течение которого пища не преследуется */
+  public avoidTimer = 0;
   public alive = true;
 
   public constructor(params: OrganismParams) {

@@ -44,7 +44,7 @@ export class SceneManager extends ContextSingleton<SceneManager> {
     container.appendChild(renderer.domElement);
     this._renderer = renderer;
 
-    this.scene.background = new THREE.Color(0x10141a);
+    this.scene.background = new THREE.Color(0xffffff);
     this.scene.add(new THREE.AmbientLight(0xffffff, 1));
 
     // Мир лежит в плоскости XZ, камера смотрит вниз вдоль -Y
@@ -99,12 +99,12 @@ export class SceneManager extends ContextSingleton<SceneManager> {
   private _addWorldBounds(bounds: WorldBounds): void {
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(bounds.width, bounds.depth),
-      new THREE.MeshBasicMaterial({ color: 0x1b222c }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }),
     );
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
 
-    const grid = new THREE.GridHelper(Math.max(bounds.width, bounds.depth), 20, 0x2c3644, 0x222a35);
+    const grid = new THREE.GridHelper(Math.max(bounds.width, bounds.depth), 20, 0xc8c8c8, 0xe2e2e2);
     grid.position.y = 0.01;
     this.scene.add(grid);
   }

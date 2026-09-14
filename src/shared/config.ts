@@ -1,3 +1,12 @@
+import {
+  OBSTACLE_PRESETS,
+  ZONE_PRESETS,
+  type ObstaclePresetId,
+  type ResourceZone,
+  type Shape,
+  type ZonePresetId,
+} from './environment';
+
 /**
  * Конфигурация модели мира. Единицы: длина — условные единицы мира, время — секунды модели
  */
@@ -20,6 +29,7 @@ export interface SimulationConfig {
   food: {
     initial: number;
     max: number;
+    /** Частота появления пищи при плодородии 1 по всему миру */
     spawnPerSecond: number;
     /** Энергия одной единицы пищи */
     energy: number;
@@ -56,7 +66,55 @@ export interface SimulationConfig {
     /** Минимальная доля скорости при исследовании */
     minWanderSpeedShare: number;
   };
+  environment: {
+    /** Шаблон, по которому построены obstacles; фигуры — источник истины для модели */
+    obstaclePreset: ObstaclePresetId;
+    obstacles: Shape[];
+    zonePreset: ZonePresetId;
+    /** Плодородие вне зон */
+    baseFertility: number;
+    zones: ResourceZone[];
+  };
+  season: {
+    enabled: boolean;
+    /** Период сезонного цикла, секунды */
+    period: number;
+    /** Размах колебаний плодородия: множитель 1 ± amplitude */
+    amplitude: number;
+  };
 }
 
 /** Радиус единицы пищи: организм съедает ее при расстоянии size + FOOD_RADIUS */
 export const FOOD_RADIUS = 0.5;
+
+export function applyObstaclePreset(config: SimulationConfig, preset: ObstaclePresetId): void {
+  config.environment.obstaclePreset = preset;
+  config.environment.obstacles = OBSTACLE_PRESETS[preset].create(config.world.width, config.world.depth);
+}
+
+export function applyZonePreset(config: SimulationConfig, preset: ZonePresetId): void {
+  config.environment.zonePreset = preset;
+  config.environment.baseFertility = ZONE_PRESETS[preset].baseFertility;
+  config.environment.zones = ZONE_PRESETS[preset].create(config.world.width, config.world.depth);
+}
+
+/**
+ * Переносит параметры, которые можно менять во время запуска
+ * Остальные (seed, размеры мира, стартовые численности, вместимость энергии, препятствия) применяются при сбросе
+ */
+export function applyLiveSettings(target: SimulationConfig, source: SimulationConfig): void {
+  target.population.max = source.population.max;
+  target.food.max = source.food.max;
+  target.food.spawnPerSecond = source.food.spawnPerSecond;
+  target.food.energy = source.food.energy;
+  target.energy.baseCost = source.energy.baseCost;
+  target.energy.moveCost = source.energy.moveCost;
+  target.energy.visionCost = source.energy.visionCost;
+  target.lifecycle = { ...source.lifecycle };
+  target.mutation = { ...source.mutation };
+  target.behavior = { ...source.behavior };
+  target.environment.zonePreset = source.environment.zonePreset;
+  target.environment.baseFertility = source.environment.baseFertility;
+  target.environment.zones = structuredClone(source.environment.zones);
+  target.season = { ...source.season };
+}

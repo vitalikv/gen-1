@@ -31,12 +31,44 @@ describe('SimulationRuntime', () => {
   const lastOfType = <T extends SimulationResponse['type']>(type: T) =>
     responses.filter((response): response is Extract<SimulationResponse, { type: T }> => response.type === type).at(-1);
 
-  it('отвечает ready, снимком и статистикой на init; буферы снимка передаются', () => {
+  it('отвечает ready, конфигурацией, снимком и статистикой на init; буферы снимков передаются', () => {
     runtime.handleCommand({ type: 'init', config: CONFIG });
 
-    expect(responses.map((response) => response.type)).toEqual(['ready', 'snapshot', 'stats']);
+    expect(responses.map((response) => response.type)).toEqual(['ready', 'config', 'snapshot', 'stats']);
     expect(transfers[0]).toHaveLength(3);
-    expect(transfers[1]).toHaveLength(3);
+    expect(transfers[2]).toHaveLength(3);
+  });
+
+  it('применяет updateConfig и сообщает текущую и следующую конфигурацию', () => {
+    runtime.handleCommand({ type: 'init', config: CONFIG });
+    const next = structuredClone(CONFIG);
+    next.seed = 99;
+    next.food.energy = 40;
+
+    runtime.handleCommand({ type: 'updateConfig', config: next, reset: false });
+
+    expect(lastOfType('config')).toMatchObject({
+      current: { seed: CONFIG.seed, food: { energy: 40 } },
+      next: { seed: 99, food: { energy: 40 } },
+    });
+
+    runtime.handleCommand({ type: 'updateConfig', config: next, reset: true });
+    expect(lastOfType('config')?.current.seed).toBe(99);
+  });
+
+  it('сохраняет состояние и загружает его', () => {
+    runtime.handleCommand({ type: 'init', config: CONFIG });
+    for (let i = 0; i < 5; i++) {
+      runtime.handleCommand({ type: 'step' });
+    }
+    runtime.handleCommand({ type: 'saveState' });
+    const state = lastOfType('state')!.state;
+
+    runtime.handleCommand({ type: 'reset' });
+    runtime.handleCommand({ type: 'loadState', state: JSON.parse(JSON.stringify(state)) });
+
+    expect(lastOfType('snapshot')?.snapshot.step).toBe(5);
+    expect(lastOfType('config')?.current.seed).toBe(CONFIG.seed);
   });
 
   it('после start считает шаги по реальному времени и отправляет снимки', () => {

@@ -1,6 +1,6 @@
 import { GENE_NAMES, type GeneName, type GeneValues } from './genes';
 
-export const ORGANISM_ACTIONS = ['wandering', 'seeking', 'eating'] as const;
+export const ORGANISM_ACTIONS = ['wandering', 'seeking', 'eating', 'avoiding'] as const;
 
 export type OrganismAction = (typeof ORGANISM_ACTIONS)[number];
 
@@ -36,7 +36,9 @@ export interface SimulationSnapshot {
   running: boolean;
   /** Множитель скорости модельного времени относительно реального */
   speed: number;
-  /** ID организмов; порядок совпадает с organisms */
+  /** Текущий сезонный множитель плодородия */
+  season: number;
+  /** ID организмов по возрастанию; порядок совпадает с organisms */
   organismIds: Uint32Array;
   organisms: Float32Array;
   food: Float32Array;
@@ -64,4 +66,6 @@ export interface StatsSample {
   deaths: number;
   averageEnergyRatio: number;
   averageGenes: GeneValues;
+  /** Сезонный множитель плодородия */
+  season: number;
 }

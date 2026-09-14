@@ -1,4 +1,5 @@
 import { GENE_NAMES, type GeneValues } from '@/shared/genes';
+import type { SavedSimulationState } from '@/shared/savedState';
 import type { StatsSample } from '@/shared/snapshot';
 import type { World } from './World';
 
@@ -41,6 +42,18 @@ export class StatisticsCollector {
     }
   }
 
+  public toSaved(): SavedSimulationState['statistics'] {
+    return { samples: structuredClone(this._samples), lastBirths: this._lastBirths, lastDeaths: this._lastDeaths };
+  }
+
+  public restore(saved: SavedSimulationState['statistics']): void {
+    this._samples.length = 0;
+    this._samples.push(...structuredClone(saved.samples).slice(-this._maxSamples));
+    this._lastBirths = saved.lastBirths;
+    this._lastDeaths = saved.lastDeaths;
+    this._version++;
+  }
+
   private _addSample(world: World, time: number): void {
     const averageGenes = {} as GeneValues;
     for (const name of GENE_NAMES) {
@@ -70,6 +83,7 @@ export class StatisticsCollector {
       deaths: world.deathsTotal - this._lastDeaths,
       averageEnergyRatio: population > 0 ? energyRatioSum / population : 0,
       averageGenes,
+      season: world.environment.seasonMultiplier(time),
     });
     this._lastBirths = world.birthsTotal;
     this._lastDeaths = world.deathsTotal;

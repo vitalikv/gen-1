@@ -72,7 +72,7 @@ export class WorldRenderer {
   private readonly _perceptionMaterial = new THREE.MeshBasicMaterial({
     color: PERCEPTION_COLOR,
     transparent: true,
-    opacity: 0.18,
+    opacity: 0.25,
     depthWrite: false,
   });
   private readonly _foodGeometry = new THREE.CircleGeometry(FOOD_RADIUS, 10).rotateX(-Math.PI / 2);

@@ -33,6 +33,7 @@ export class ControlPanel {
   private readonly _timeValue: HTMLElement;
   private readonly _populationValue: HTMLElement;
   private readonly _foodValue: HTMLElement;
+  private readonly _seasonValue: HTMLElement;
   private readonly _unsubscribers: (() => void)[] = [];
 
   public constructor(container: HTMLElement, bridge: SimulationBridge, controls: SimulationControls, settings: ViewSettings) {
@@ -60,6 +61,7 @@ export class ControlPanel {
     this._timeValue = this._createStat(stats, 'Время');
     this._populationValue = this._createStat(stats, 'Организмы');
     this._foodValue = this._createStat(stats, 'Пища');
+    this._seasonValue = this._createStat(stats, 'Сезон');
 
     this._colorSelect = document.createElement('select');
     for (const option of COLOR_MODE_OPTIONS) {
@@ -131,6 +133,7 @@ export class ControlPanel {
       this._timeValue.textContent = `${snapshot.time.toFixed(1)} с`;
       this._populationValue.textContent = String(snapshot.organismIds.length);
       this._foodValue.textContent = String(snapshot.food.length / FOOD_STRIDE);
+      this._seasonValue.textContent = `${Math.round(snapshot.season * 100)}%`;
     }
   }
 

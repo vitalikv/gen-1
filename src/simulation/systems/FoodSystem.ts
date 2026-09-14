@@ -1,15 +1,21 @@
 import type { World } from '../World';
 
 /**
- * Появление пищи и построение индекса для поиска
+ * Появление пищи с учетом плодородия зон и сезона; построение индекса для поиска
  */
 export class FoodSystem {
-  /** Добавляет пищу с постоянной частотой; дробная часть переносится между шагами */
-  public spawn(world: World, dt: number): void {
-    world.foodSpawnAccumulator += world.config.food.spawnPerSecond * dt;
+  /**
+   * Частота попыток: spawnPerSecond * season * maxFertility; каждая попытка принимается
+   * с вероятностью fertility / maxFertility, поэтому плотность пищи пропорциональна плодородию
+   */
+  public spawn(world: World, dt: number, time: number): void {
+    const { environment } = world;
+    world.foodSpawnAccumulator +=
+      world.config.food.spawnPerSecond * environment.seasonMultiplier(time) * environment.maxFertility * dt;
+
     while (world.foodSpawnAccumulator >= 1) {
       world.foodSpawnAccumulator -= 1;
-      world.spawnFood();
+      world.trySpawnFood();
     }
   }
 

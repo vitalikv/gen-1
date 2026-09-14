@@ -174,7 +174,7 @@ describe('World', () => {
 
   it('не превышает предел пищи', () => {
     const world = World.create(createTestConfig({ food: { initial: 10, max: 10, spawnPerSecond: 100, energy: 1 } }));
-    new FoodSystem().spawn(world, 1);
+    new FoodSystem().spawn(world, 1, 0);
 
     expect(world.food.length).toBe(10);
   });

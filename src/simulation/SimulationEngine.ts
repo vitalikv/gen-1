@@ -3,6 +3,7 @@ import { MAX_SIMULATION_SPEED, MIN_SIMULATION_SPEED } from '@/core/config';
 import type { SeededRandom } from '@/core/SeededRandom';
 import type { SimulationConfig } from '@/shared/config';
 import { GENE_NAMES } from '@/shared/genes';
+import { MODEL_VERSION, SAVED_STATE_FORMAT, type SavedSimulationState } from '@/shared/savedState';
 import {
   FOOD_STRIDE,
   ORGANISM_ACTIONS,
@@ -18,6 +19,7 @@ import { BehaviorSystem } from './systems/BehaviorSystem';
 import { EnergySystem } from './systems/EnergySystem';
 import { EvolutionSystem } from './systems/EvolutionSystem';
 import { FoodSystem } from './systems/FoodSystem';
+import { validateConfig } from './validateConfig';
 import { World } from './World';
 
 /** Максимальное отставание по реальному времени, которое догоняет симуляция */
@@ -33,7 +35,8 @@ const GENE_FIELDS = GENE_NAMES.map((name) => organismGeneField(name));
  * Не зависит от Three.js, DOM и таймеров: может работать без визуализации и Worker
  */
 export class SimulationEngine extends ContextSingleton<SimulationEngine> {
-  private _config: SimulationConfig | null = null;
+  /** Конфигурация, которая применится при следующем сбросе */
+  private _nextConfig: SimulationConfig | null = null;
   private _world: World | null = null;
   private _statistics: StatisticsCollector | null = null;
   private _step = 0;
@@ -48,7 +51,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   private readonly _evolutionSystem = new EvolutionSystem();
 
   public get isInitialized(): boolean {
-    return this._config !== null;
+    return this._world !== null;
   }
 
   public get step(): number {
@@ -56,7 +59,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   }
 
   public get time(): number {
-    return this._step * this._requireConfig().dt;
+    return this._step * this._requireWorld().config.dt;
   }
 
   public get running(): boolean {
@@ -84,27 +87,48 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   }
 
   public init(config: SimulationConfig): void {
-    if (!(config.dt > 0) || !Number.isFinite(config.dt)) {
-      throw new Error(`SimulationEngine: некорректный шаг dt = ${config.dt}`);
-    }
-    this._config = structuredClone(config);
-    this._statistics = new StatisticsCollector(STATS_SAMPLE_INTERVAL / config.dt, STATS_MAX_SAMPLES);
+    validateConfig(config);
+    this._nextConfig = structuredClone(config);
     this._speed = 1;
     this.reset();
   }
 
-  /** Возвращает мир в начальное состояние с тем же seed; симуляция ставится на паузу */
+  /** Создает мир заново по конфигурации следующего запуска; симуляция ставится на паузу */
   public reset(): void {
-    const config = this._requireConfig();
-    this._world = World.create(config);
-    this._statistics!.reset(this._world);
+    const config = this._requireNextConfig();
+    this._world = World.create(structuredClone(config));
+    this._statistics = this._createStatistics(config);
+    this._statistics.reset(this._world);
     this._step = 0;
     this._running = false;
     this._accumulator = 0;
   }
 
+  /**
+   * Сохраняет конфигурацию для следующего сброса и сразу применяет параметры,
+   * которые можно менять во время запуска (applyLiveSettings)
+   */
+  public updateConfig(config: SimulationConfig, reset: boolean): void {
+    this._requireWorld();
+    validateConfig(config);
+    this._nextConfig = structuredClone(config);
+
+    if (reset) {
+      this.reset();
+    } else {
+      this._world!.applyLiveConfig(config);
+    }
+  }
+
+  public getConfigState(): { current: SimulationConfig; next: SimulationConfig } {
+    return {
+      current: structuredClone(this._requireWorld().config),
+      next: structuredClone(this._requireNextConfig()),
+    };
+  }
+
   public start(): void {
-    this._requireConfig();
+    this._requireWorld();
     if (!this._running) {
       this._running = true;
       this._accumulator = 0;
@@ -112,7 +136,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   }
 
   public pause(): void {
-    this._requireConfig();
+    this._requireWorld();
     this._running = false;
     this._accumulator = 0;
   }
@@ -140,7 +164,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       return 0;
     }
 
-    const { dt } = this._requireConfig();
+    const { dt } = this._requireWorld().config;
     const backlogLimit = Math.max(MAX_BACKLOG_REAL_SECONDS * this._speed, dt);
     this._accumulator = Math.min(this._accumulator + Math.max(realSeconds, 0) * this._speed, backlogLimit);
 
@@ -152,7 +176,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
 
   /** Рассчитывает заданное число шагов; результат зависит только от числа шагов */
   public advance(steps: number): void {
-    this._requireConfig();
+    this._requireWorld();
     if (!Number.isInteger(steps) || steps < 0) {
       throw new Error(`SimulationEngine: некорректное число шагов ${steps}`);
     }
@@ -160,6 +184,48 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     for (let i = 0; i < steps; i++) {
       this._tick();
     }
+  }
+
+  /** Полное состояние для точного продолжения */
+  public saveState(): SavedSimulationState {
+    const world = this._requireWorld();
+    return {
+      format: SAVED_STATE_FORMAT,
+      modelVersion: MODEL_VERSION,
+      savedAt: new Date().toISOString(),
+      config: structuredClone(world.config),
+      nextConfig: structuredClone(this._requireNextConfig()),
+      step: this._step,
+      world: world.toSaved(),
+      statistics: this._statistics!.toSaved(),
+    };
+  }
+
+  /** Восстанавливает состояние; симуляция ставится на паузу, скорость сохраняется */
+  public loadState(state: SavedSimulationState): void {
+    if (state?.format !== SAVED_STATE_FORMAT) {
+      throw new Error('Файл не является сохранением Gen-1');
+    }
+    if (state.modelVersion !== MODEL_VERSION) {
+      throw new Error(`Сохранение сделано версией модели ${state.modelVersion}, текущая версия ${MODEL_VERSION}`);
+    }
+    if (!Number.isInteger(state.step) || state.step < 0) {
+      throw new Error(`Некорректный номер шага в сохранении: ${state.step}`);
+    }
+    validateConfig(state.config);
+    validateConfig(state.nextConfig);
+
+    const config = structuredClone(state.config);
+    const world = World.fromSaved(config, state.world);
+    const statistics = this._createStatistics(config);
+    statistics.restore(state.statistics);
+
+    this._nextConfig = structuredClone(state.nextConfig);
+    this._world = world;
+    this._statistics = statistics;
+    this._step = state.step;
+    this._running = false;
+    this._accumulator = 0;
   }
 
   public getSnapshot(): SimulationSnapshot {
@@ -193,6 +259,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       time: this.time,
       running: this._running,
       speed: this._speed,
+      season: world.environment.seasonMultiplier(this.time),
       organismIds,
       organisms: organismData,
       food: foodData,
@@ -222,7 +289,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     const world = this._requireWorld();
     const { dt } = world.config;
 
-    this._foodSystem.spawn(world, dt);
+    this._foodSystem.spawn(world, dt, this._step * dt);
     this._foodSystem.rebuildIndex(world);
 
     for (const organism of world.organisms) {
@@ -239,15 +306,21 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     this._statistics!.record(world, this._step, this.time);
   }
 
-  private _requireConfig(): SimulationConfig {
-    if (!this._config) {
+  private _createStatistics(config: SimulationConfig): StatisticsCollector {
+    return new StatisticsCollector(STATS_SAMPLE_INTERVAL / config.dt, STATS_MAX_SAMPLES);
+  }
+
+  private _requireNextConfig(): SimulationConfig {
+    if (!this._nextConfig) {
       throw new Error('SimulationEngine: симуляция не инициализирована');
     }
-    return this._config;
+    return this._nextConfig;
   }
 
   private _requireWorld(): World {
-    this._requireConfig();
-    return this._world!;
+    if (!this._world) {
+      throw new Error('SimulationEngine: симуляция не инициализирована');
+    }
+    return this._world;
   }
 }

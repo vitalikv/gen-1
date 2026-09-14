@@ -3,6 +3,7 @@ import { CHART_HEIGHT, CHART_THEME, formatTime, niceCeil, prepareCanvas } from '
 export interface LineSeries {
   label: string;
   color: string;
+  times: readonly number[];
   values: readonly number[];
 }
 
@@ -15,8 +16,24 @@ export interface LineChartOptions {
 
 const PADDING = { left: 34, right: 6, top: 6, bottom: 16 };
 
+/** Индекс точки ряда, ближайшей по времени */
+function nearestIndex(times: readonly number[], target: number): number {
+  let low = 0;
+  let high = times.length - 1;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (times[middle]! < target) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low > 0 && target - times[low - 1]! < times[low]! - target ? low - 1 : low;
+}
+
 /**
- * Линейный график по времени на canvas с перекрестием и подписью значений при наведении
+ * Линейный график по времени на canvas; у каждого ряда своя шкала времени
+ * При наведении — перекрестие и значения рядов в ближайший момент
  */
 export class LineChart {
   public readonly element: HTMLElement;
@@ -25,11 +42,11 @@ export class LineChart {
   private readonly _titleElement: HTMLElement;
   private readonly _readout: HTMLElement;
   private readonly _legend: HTMLElement;
+  private readonly _legendValues: HTMLElement[] = [];
   private readonly _canvas: HTMLCanvasElement;
   private readonly _resizeObserver: ResizeObserver;
-  private _times: readonly number[] = [];
   private _series: LineSeries[] = [];
-  private _hoverIndex: number | null = null;
+  private _hoverTime: number | null = null;
 
   public constructor(options: LineChartOptions) {
     this._options = options;
@@ -70,22 +87,30 @@ export class LineChart {
     this._draw();
   }
 
-  public setData(times: readonly number[], series: LineSeries[]): void {
+  public setData(series: LineSeries[]): void {
     const legendKey = series.map((item) => `${item.label}:${item.color}`).join('|');
     if (legendKey !== this._legend.dataset['key']) {
       this._renderLegend(series, legendKey);
     }
-    this._times = times;
     this._series = series;
-    if (this._hoverIndex !== null && this._hoverIndex >= times.length) {
-      this._hoverIndex = null;
-    }
     this._draw();
   }
 
   public dispose(): void {
     this._resizeObserver.disconnect();
     this.element.remove();
+  }
+
+  private _timeRange(): [number, number] | null {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const series of this._series) {
+      if (series.times.length > 0) {
+        min = Math.min(min, series.times[0]!);
+        max = Math.max(max, series.times[series.times.length - 1]!);
+      }
+    }
+    return min <= max ? [min, max] : null;
   }
 
   private _draw(): void {
@@ -98,8 +123,7 @@ export class LineChart {
     const { context, width, height } = prepared;
     const plotWidth = width - PADDING.left - PADDING.right;
     const plotHeight = height - PADDING.top - PADDING.bottom;
-    const times = this._times;
-    const count = times.length;
+    const range = this._timeRange();
 
     let dataMax = 0;
     for (const series of this._series) {
@@ -110,10 +134,10 @@ export class LineChart {
     const yMin = this._options.yMin ?? 0;
     const yMax = this._options.yMax ?? niceCeil(dataMax);
     const yRange = yMax - yMin || 1;
-    const tMin = times[0] ?? 0;
-    const tRange = (times[count - 1] ?? 0) - tMin || 1;
+    const [tMin, tMax] = range ?? [0, 1];
+    const tRange = tMax - tMin || 1;
     const toX = (time: number) => PADDING.left + ((time - tMin) / tRange) * plotWidth;
-    const toY = (value: number) => PADDING.top + (1 - (value - yMin) / yRange) * plotHeight;
+    const toY = (value: number) => PADDING.top + (1 - (Math.min(Math.max(value, yMin), yMax) - yMin) / yRange) * plotHeight;
 
     // Сетка и подписи оси Y
     context.lineWidth = 1;
@@ -130,23 +154,27 @@ export class LineChart {
       context.fillText(this._options.format(value), PADDING.left - 4, y);
     }
 
-    if (count > 0) {
+    if (range) {
       context.textBaseline = 'bottom';
       context.textAlign = 'left';
       context.fillText(formatTime(tMin), PADDING.left, height);
       context.textAlign = 'right';
-      context.fillText(formatTime(times[count - 1]!), width - PADDING.right, height);
+      context.fillText(formatTime(tMax), width - PADDING.right, height);
     }
 
-    // Линии рядов
+    // Линии рядов; первый ряд рисуется последним, чтобы оставаться сверху
     context.lineWidth = 2;
     context.lineJoin = 'round';
     context.lineCap = 'round';
-    for (const series of this._series) {
+    for (const series of [...this._series].reverse()) {
+      const count = series.times.length;
+      if (count === 0) {
+        continue;
+      }
       context.strokeStyle = series.color;
       context.beginPath();
       for (let i = 0; i < count; i++) {
-        const x = toX(times[i]!);
+        const x = toX(series.times[i]!);
         const y = toY(series.values[i] ?? 0);
         if (i === 0) {
           context.moveTo(x, y);
@@ -155,14 +183,14 @@ export class LineChart {
         }
       }
       if (count === 1) {
-        context.lineTo(toX(times[0]!) + 0.1, toY(series.values[0] ?? 0));
+        context.lineTo(toX(series.times[0]!) + 0.1, toY(series.values[0] ?? 0));
       }
       context.stroke();
     }
 
     // Перекрестие наведения
-    if (this._hoverIndex !== null && count > 0) {
-      const x = Math.round(toX(times[this._hoverIndex]!)) + 0.5;
+    if (this._hoverTime !== null && range) {
+      const x = Math.round(toX(this._hoverTime)) + 0.5;
       context.strokeStyle = CHART_THEME.crosshair;
       context.globalAlpha = 0.5;
       context.lineWidth = 1;
@@ -173,9 +201,12 @@ export class LineChart {
       context.globalAlpha = 1;
 
       for (const series of this._series) {
-        const y = toY(series.values[this._hoverIndex] ?? 0);
+        const index = this._indexAtHover(series);
+        if (index === null) {
+          continue;
+        }
         context.beginPath();
-        context.arc(x, y, 4, 0, Math.PI * 2);
+        context.arc(toX(series.times[index]!), toY(series.values[index] ?? 0), 4, 0, Math.PI * 2);
         context.fillStyle = series.color;
         context.fill();
         context.lineWidth = 2;
@@ -185,10 +216,26 @@ export class LineChart {
     }
   }
 
+  /** Точка ряда в момент наведения; null, если ряд не покрывает этот момент */
+  private _indexAtHover(series: LineSeries): number | null {
+    const count = series.times.length;
+    if (count === 0) {
+      return null;
+    }
+    if (this._hoverTime === null) {
+      return count - 1;
+    }
+    if (this._hoverTime > series.times[count - 1]! + 1e-9 || this._hoverTime < series.times[0]! - 1e-9) {
+      return null;
+    }
+    return nearestIndex(series.times, this._hoverTime);
+  }
+
   /** Легенда нужна при двух и более рядах; один ряд называет заголовок */
   private _renderLegend(series: LineSeries[], key: string): void {
     this._legend.dataset['key'] = key;
     this._legend.hidden = series.length < 2;
+    this._legendValues.length = 0;
     this._legend.replaceChildren(
       ...series.map((item) => {
         const entry = document.createElement('span');
@@ -196,60 +243,60 @@ export class LineChart {
         const swatch = document.createElement('span');
         swatch.className = 'chart__swatch';
         swatch.style.background = item.color;
-        entry.append(swatch, item.label);
+        const value = document.createElement('span');
+        value.className = 'chart__legend-value';
+        this._legendValues.push(value);
+        entry.append(swatch, item.label, value);
         return entry;
       }),
     );
   }
 
-  /** Подпись значений под курсором; без наведения — последние значения */
+  /** Значения в момент наведения; без наведения — последние значения */
   private _updateReadout(): void {
-    const count = this._times.length;
-    if (count === 0) {
-      this._readout.textContent = '';
+    const valueText = (series: LineSeries) => {
+      const index = this._indexAtHover(series);
+      return index === null ? '—' : this._options.format(series.values[index] ?? 0);
+    };
+    const timePrefix = this._hoverTime === null ? '' : formatTime(this._hoverTime);
+
+    if (this._series.length === 1) {
+      const text = valueText(this._series[0]!);
+      this._readout.textContent = timePrefix ? `${timePrefix}: ${text}` : text;
       return;
     }
 
-    const index = this._hoverIndex ?? count - 1;
-    const values = this._series.map((series) => {
-      const value = this._options.format(series.values[index] ?? 0);
-      return this._series.length > 1 ? `${series.label} ${value}` : value;
+    this._readout.textContent = timePrefix;
+    this._series.forEach((series, i) => {
+      const element = this._legendValues[i];
+      if (element) {
+        element.textContent = valueText(series);
+      }
     });
-    const prefix = this._hoverIndex === null ? '' : `${formatTime(this._times[index]!)}: `;
-    this._readout.textContent = prefix + values.join(' · ');
   }
 
   private readonly _onPointerMove = (event: PointerEvent): void => {
-    const count = this._times.length;
-    if (count === 0) {
+    const range = this._timeRange();
+    if (!range) {
       return;
     }
     const rect = this._canvas.getBoundingClientRect();
     const plotWidth = rect.width - PADDING.left - PADDING.right;
     const share = Math.min(Math.max((event.clientX - rect.left - PADDING.left) / plotWidth, 0), 1);
-    const tMin = this._times[0]!;
-    const target = tMin + share * (this._times[count - 1]! - tMin);
+    const target = range[0] + share * (range[1] - range[0]);
 
-    let low = 0;
-    let high = count - 1;
-    while (low < high) {
-      const middle = (low + high) >> 1;
-      if (this._times[middle]! < target) {
-        low = middle + 1;
-      } else {
-        high = middle;
-      }
-    }
-    const index = low > 0 && target - this._times[low - 1]! < this._times[low]! - target ? low - 1 : low;
+    // Привязка к ближайшей точке первого ряда, покрывающего момент
+    const anchor = this._series.find((series) => series.times.length > 0 && target <= series.times[series.times.length - 1]! + 1e-9);
+    const snapped = anchor ? anchor.times[nearestIndex(anchor.times, target)]! : target;
 
-    if (index !== this._hoverIndex) {
-      this._hoverIndex = index;
+    if (snapped !== this._hoverTime) {
+      this._hoverTime = snapped;
       this._draw();
     }
   };
 
   private readonly _onPointerLeave = (): void => {
-    this._hoverIndex = null;
+    this._hoverTime = null;
     this._draw();
   };
 }
