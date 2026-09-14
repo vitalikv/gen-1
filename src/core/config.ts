@@ -1,4 +1,5 @@
 import type { SimulationConfig } from '@/shared/config';
+import { DEFAULT_TERRAIN_SETTINGS } from '@/shared/config';
 
 export const DEFAULT_SIMULATION_CONFIG: Readonly<SimulationConfig> = {
   seed: 1,
@@ -17,7 +18,7 @@ export const DEFAULT_SIMULATION_CONFIG: Readonly<SimulationConfig> = {
   perception: { fieldOfView: Math.PI * 1.5, memoryDuration: 60, memoryCost: 0.05, mateCallRadius: 60 },
   mutation: { rate: 0.2, sigmaScale: 1 },
   behavior: { turnRate: 2, minWanderSpeedShare: 0.1 },
-  environment: { terrain: 'geographic', obstaclePreset: 'none', obstacles: [], zonePreset: 'uniform', baseFertility: 1, zones: [] },
+  environment: { terrain: 'geographic', terrainSettings: { ...DEFAULT_TERRAIN_SETTINGS }, obstaclePreset: 'none', obstacles: [], zonePreset: 'uniform', baseFertility: 1, zones: [] },
   season: { enabled: false, period: 120, amplitude: 0.6 },
 };
 

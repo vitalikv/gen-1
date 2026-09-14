@@ -10,7 +10,20 @@ import {
 /**
  * Конфигурация модели мира. Единицы: длина — условные единицы мира, время — секунды модели
  */
+export interface TerrainSettings {
+  lakeCount: number;
+  lakeSize: number;
+  riverCount: number;
+  riverWidth: number;
+  sandPercent: number;
+}
+
+export const DEFAULT_TERRAIN_SETTINGS: Readonly<TerrainSettings> = {
+  lakeCount: 3, lakeSize: 36, riverCount: 1, riverWidth: 8, sandPercent: 30,
+};
+
 export interface SimulationConfig {
+  mode?: 'evolution' | 'settlement';
   /** Seed генератора случайных чисел эксперимента */
   seed: number;
   /** Фиксированный шаг модельного времени */
@@ -123,6 +136,8 @@ export interface SimulationConfig {
   environment: {
     /** Отсутствует у старых сохранений: прежний плоский мир. Меняется при сбросе. */
     terrain?: 'plain' | 'geographic';
+    /** Отсутствует у старых карт: используется прежний генератор. Размеры в единицах мира. */
+    terrainSettings?: TerrainSettings;
     /** Шаблон, по которому построены obstacles; фигуры — источник истины для модели */
     obstaclePreset: ObstaclePresetId;
     obstacles: Shape[];

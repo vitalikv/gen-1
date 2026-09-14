@@ -6,6 +6,12 @@ body {
   background: #ffffff;
 }
 
+.settlement-mode .evolution-only,
+.settlement-mode .stats-panel,
+.settings-settlement .settings-evolution-only {
+  display: none;
+}
+
 #app {
   position: fixed;
   inset: 0;

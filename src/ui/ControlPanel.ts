@@ -102,6 +102,10 @@ export class ControlPanel {
       legend,
       perceptionLabel,
     );
+    Array.from(this._root.children).slice(3).forEach((element) => element.classList.add('evolution-only'));
+    for (const value of [this._populationValue, this._predatorsValue, this._foodValue, this._seasonValue]) {
+      value.parentElement?.classList.add('evolution-only');
+    }
     container.appendChild(this._root);
 
     this._renderLegend();

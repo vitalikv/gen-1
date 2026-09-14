@@ -4,11 +4,74 @@ import { Terrain } from '@/shared/Terrain';
 import { SimulationEngine } from './SimulationEngine';
 import { World } from './World';
 import { FoodSystem } from './systems/FoodSystem';
+import { validateConfig } from './validateConfig';
 
 function config(seed = 1) { return { ...structuredClone(DEFAULT_SIMULATION_CONFIG), seed }; }
 
 describe('Географическая местность', () => {
   afterEach(() => SimulationEngine.destroyAllInstances());
+
+  it('задаёт точную долю песка на суше и позволяет отключить воду', () => {
+    const c = config();
+    c.environment.terrainSettings!.lakeCount = 0;
+    c.environment.terrainSettings!.riverCount = 0;
+    for (const percent of [0, 27, 100]) {
+      c.environment.terrainSettings!.sandPercent = percent;
+      const terrain = new Terrain(c);
+      expect(terrain.cells.includes(2)).toBe(false);
+      expect(terrain.cells.filter((cell) => cell === 1).length).toBe(Math.round(terrain.cells.length * percent / 100));
+    }
+    c.environment.terrainSettings!.lakeCount = 4;
+    c.environment.terrainSettings!.sandPercent = 35;
+    const terrain = new Terrain(c);
+    const land = terrain.cells.filter((cell) => cell !== 2).length;
+    expect(land).toBeLessThan(terrain.cells.length);
+    expect(terrain.cells.filter((cell) => cell === 1).length).toBe(Math.round(land * 0.35));
+  });
+
+  it('увеличение размеров озёр и ширины рек увеличивает площадь воды', () => {
+    for (const key of ['lakeSize', 'riverWidth'] as const) {
+      const c = config();
+      c.environment.terrainSettings![key] = 2;
+      const small = new Terrain(c).cells.filter((cell) => cell === 2).length;
+      c.environment.terrainSettings![key] = 40;
+      expect(new Terrain(c).cells.filter((cell) => cell === 2).length).toBeGreaterThan(small);
+    }
+  });
+
+  it('адаптирует сетку к прямоугольному миру и сохраняет старую сетку', () => {
+    const c = config();
+    c.world = { width: 400, depth: 100 };
+    const terrain = new Terrain(c);
+    expect([terrain.columns, terrain.rows, terrain.cellWidth, terrain.cellDepth]).toEqual([400, 100, 1, 1]);
+    delete c.environment.terrainSettings;
+    const legacy = new Terrain(c);
+    expect([legacy.columns, legacy.rows]).toEqual([192, 192]);
+    expect(legacy.cells).toEqual(new Terrain(c).cells);
+  });
+
+  it('проверяет параметры генерации', () => {
+    for (const [key, value] of [['lakeCount', -1], ['riverCount', 1.5], ['lakeSize', 0], ['riverWidth', NaN], ['sandPercent', 101]] as const) {
+      const c = config();
+      c.environment.terrainSettings![key] = value;
+      expect(() => validateConfig(c)).toThrow(`environment.terrainSettings.${key}`);
+    }
+  });
+
+  it('применяет размер и ландшафт только при сбросе', () => {
+    const engine = SimulationEngine.inst('terrain-size');
+    engine.init(config());
+    const next = config();
+    next.world = { width: 300, depth: 100 };
+    next.environment.terrainSettings!.lakeCount = 0;
+    next.environment.terrainSettings!.riverCount = 0;
+    engine.updateConfig(next, false);
+    expect(engine.world.config.world.width).toBe(200);
+    expect(engine.world.environment.terrain.cells.includes(2)).toBe(true);
+    engine.reset();
+    expect(engine.world.config.world).toEqual(next.world);
+    expect(engine.world.environment.terrain.cells.includes(2)).toBe(false);
+  });
 
   it('повторяет карту по seed и содержит все три поверхности при разных seed', () => {
     for (const seed of [1, 2, 5, 42, -1, 999]) {

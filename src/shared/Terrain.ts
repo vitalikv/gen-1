@@ -5,9 +5,9 @@ export type TerrainKind = 'grass' | 'sand' | 'water';
 
 /** Shared, deterministic terrain. Its own RNG never consumes simulation randomness. */
 export class Terrain {
-  public readonly columns = 192;
-  public readonly rows = 192;
-  public readonly cells = new Uint8Array(this.columns * this.rows);
+  public readonly columns: number;
+  public readonly rows: number;
+  public readonly cells: Uint8Array;
   public readonly cellWidth: number;
   public readonly cellDepth: number;
   public readonly enabled: boolean;
@@ -18,9 +18,17 @@ export class Terrain {
     this.enabled = config.environment.terrain === 'geographic';
     this._width = config.world.width;
     this._depth = config.world.depth;
+    // Keep legacy saves exact; new maps target roughly one world unit per cell.
+    this.columns = config.environment.terrainSettings ? Math.max(32, Math.min(1024, Math.ceil(this._width))) : 192;
+    this.rows = config.environment.terrainSettings ? Math.max(32, Math.min(1024, Math.ceil(this._depth))) : 192;
+    this.cells = new Uint8Array(this.columns * this.rows);
     this.cellWidth = this._width / this.columns;
     this.cellDepth = this._depth / this.rows;
     if (!this.enabled) return;
+    if (config.environment.terrainSettings) {
+      this._generate(config);
+      return;
+    }
     const random = new SeededRandom(config.seed ^ 0x74657272);
     const phase = random.range(0, Math.PI * 2);
     const lakes = Array.from({ length: 3 }, (_, i) => ({
@@ -51,6 +59,53 @@ export class Terrain {
         this.cells[row * this.columns + col] = shore < 0 ? 2 : sand ? 1 : 0;
       }
     }
+  }
+
+  private _generate(config: SimulationConfig): void {
+    const settings = config.environment.terrainSettings!;
+    const random = new SeededRandom(config.seed ^ 0x74657272);
+    const lakes = Array.from({ length: settings.lakeCount }, () => ({
+      x: random.range(-0.4, 0.4) * this._width,
+      z: random.range(-0.4, 0.4) * this._depth,
+      rx: settings.lakeSize * random.range(0.35, 0.6),
+      rz: settings.lakeSize * random.range(0.35, 0.6),
+      phase: random.range(0, Math.PI * 2),
+    }));
+    const rivers = Array.from({ length: settings.riverCount }, (_, i) => ({
+      offset: ((i + 1) / (settings.riverCount + 1) - 0.5) * this._width,
+      phase: random.range(0, Math.PI * 2),
+    }));
+    const phase = random.range(0, Math.PI * 2);
+    const scores = new Float64Array(this.cells.length);
+    const land: number[] = [];
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.columns; col++) {
+        const x = (col + 0.5) * this.cellWidth - this._width / 2;
+        const z = (row + 0.5) * this.cellDepth - this._depth / 2;
+        let shore = Infinity;
+        for (const lake of lakes) {
+          const dx = (x - lake.x) / lake.rx;
+          const dz = (z - lake.z) / lake.rz;
+          shore = Math.min(shore, (Math.hypot(dx, dz) - 1 - 0.1 * Math.sin(Math.atan2(dz, dx) * 5 + lake.phase)) * Math.min(lake.rx, lake.rz));
+        }
+        for (const river of rivers) {
+          const t = z / this._depth;
+          const center = river.offset + this._width * (0.08 * Math.sin(t * 8 + river.phase) + 0.025 * Math.sin(t * 21 + river.phase));
+          shore = Math.min(shore, Math.abs(x - center) - settings.riverWidth / 2);
+        }
+        const index = row * this.columns + col;
+        if (shore < 0) this.cells[index] = 2;
+        else {
+          land.push(index);
+          // Smooth patches with a preference for sandy shores.
+          scores[index] = Math.sin(x / 19 + phase) + Math.cos(z / 23 - phase)
+            + 0.5 * Math.sin(x / 9 + z / 13 + phase) + 2 * Math.exp(-shore / 3);
+        }
+      }
+    }
+    land.sort((a, b) => scores[b]! - scores[a]! || a - b);
+    const sandCount = Math.round(land.length * settings.sandPercent / 100);
+    for (let i = 0; i < sandCount; i++) this.cells[land[i]!] = 1;
   }
 
   public kindAt(x: number, z: number): TerrainKind {

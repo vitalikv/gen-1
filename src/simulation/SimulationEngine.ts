@@ -1,4 +1,5 @@
 import { ContextSingleton } from '@/core/ContextSingleton';
+import { Settlement } from '@/settlement/Settlement';
 import { MAX_SIMULATION_SPEED, MIN_SIMULATION_SPEED } from '@/core/config';
 import type { SeededRandom } from '@/core/SeededRandom';
 import type { SimulationConfig } from '@/shared/config';
@@ -42,6 +43,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   /** Конфигурация, которая применится при следующем сбросе */
   private _nextConfig: SimulationConfig | null = null;
   private _world: World | null = null;
+  private _settlement: Settlement | null = null;
   private _statistics: StatisticsCollector | null = null;
   private _step = 0;
   private _running = false;
@@ -101,7 +103,9 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   /** Создает мир заново по конфигурации следующего запуска; симуляция ставится на паузу */
   public reset(): void {
     const config = this._requireNextConfig();
-    this._world = World.create(structuredClone(config));
+    const settlement = config.mode === 'settlement' ? new Settlement(structuredClone(config)) : null;
+    this._world = settlement ? new World(structuredClone(config)) : World.create(structuredClone(config));
+    this._settlement = settlement;
     this._statistics = this._createStatistics(config);
     this._statistics.reset(this._world);
     this._step = 0;
@@ -121,7 +125,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     if (reset) {
       this.reset();
     } else {
-      this._world!.applyLiveConfig(config);
+      if (!this._settlement) this._world!.applyLiveConfig(config);
     }
   }
 
@@ -203,6 +207,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       step: this._step,
       world: world.toSaved(),
       statistics: this._statistics!.toSaved(),
+      ...(this._settlement ? { settlement: structuredClone(this._settlement.state) } : {}),
     };
   }
 
@@ -221,12 +226,18 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     validateConfig(state.nextConfig);
 
     const config = structuredClone(state.config);
+    const settlement = config.mode === 'settlement' ? new Settlement(config) : null;
+    if (settlement) {
+      if (!state.settlement) throw new Error('В сохранении отсутствует состояние поселения');
+      settlement.restore(state.settlement);
+    } else if (state.settlement) throw new Error('Режим сохранения не соответствует состоянию поселения');
     const world = World.fromSaved(config, state.world);
     const statistics = this._createStatistics(config);
     statistics.restore(state.statistics);
 
     this._nextConfig = structuredClone(state.nextConfig);
     this._world = world;
+    this._settlement = settlement;
     this._statistics = statistics;
     this._step = state.step;
     this._running = false;
@@ -273,6 +284,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       organismIds,
       organisms: organismData,
       food: foodData,
+      ...(this._settlement ? { settlement: structuredClone(this._settlement.state) } : {}),
     };
   }
 
@@ -301,6 +313,12 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   private _tick(): void {
     const world = this._requireWorld();
     const { dt } = world.config;
+
+    if (this._settlement) {
+      this._settlement.tick(dt);
+      this._step++;
+      return;
+    }
 
     world.updateImmigration(dt);
     this._foodSystem.spawn(world, dt, this._step * dt);

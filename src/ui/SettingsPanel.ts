@@ -1,4 +1,5 @@
 import { applyObstaclePreset, applyZonePreset, type SimulationConfig } from '@/shared/config';
+import { DEFAULT_TERRAIN_SETTINGS, type TerrainSettings } from '@/shared/config';
 import { OBSTACLE_PRESETS, ZONE_PRESETS, type ObstaclePresetId, type ZonePresetId } from '@/shared/environment';
 
 interface FieldBase {
@@ -36,17 +37,44 @@ interface Section {
   fields: Field[];
 }
 
+function terrainField(label: string, key: keyof TerrainSettings, min: number, max: number): NumberField {
+  return {
+    kind: 'number', label, restart: true, min, max, step: 1,
+    get: (c) => (c.environment.terrainSettings ?? DEFAULT_TERRAIN_SETTINGS)[key],
+    set: (c, v) => {
+      c.environment.terrainSettings ??= { ...DEFAULT_TERRAIN_SETTINGS };
+      c.environment.terrainSettings[key] = v;
+    },
+  };
+}
+
+function resizeWorld(config: SimulationConfig, axis: 'width' | 'depth', value: number): void {
+  config.world[axis] = value;
+  applyObstaclePreset(config, config.environment.obstaclePreset);
+  applyZonePreset(config, config.environment.zonePreset);
+}
+
 const SECTIONS: Section[] = [
   {
     title: 'Мир',
     fields: [
       { kind: 'number', label: 'Seed', restart: true, min: -2147483648, max: 4294967295, step: 1, get: (c) => c.seed, set: (c, v) => (c.seed = v) },
+      { kind: 'select', label: 'Режим', restart: true,
+        options: [{ value: 'evolution', label: 'Эволюция' }, { value: 'settlement', label: 'Поселение: первый житель' }],
+        get: (c) => c.mode ?? 'evolution', set: (c, v) => { c.mode = v as 'evolution' | 'settlement'; } },
+      { kind: 'number', label: 'Ширина карты', restart: true, min: 50, max: 2000, step: 1, get: (c) => c.world.width, set: (c, v) => resizeWorld(c, 'width', v) },
+      { kind: 'number', label: 'Длина карты', restart: true, min: 50, max: 2000, step: 1, get: (c) => c.world.depth, set: (c, v) => resizeWorld(c, 'depth', v) },
       {
         kind: 'select', label: 'Местность', restart: true,
         options: [{ value: 'geographic', label: 'Трава, песок, реки и озёра' }, { value: 'plain', label: 'Однородная равнина' }],
         get: (c) => c.environment.terrain ?? 'plain',
         set: (c, v) => { c.environment.terrain = v as 'plain' | 'geographic'; },
       },
+      terrainField('Количество озёр', 'lakeCount', 0, 50),
+      terrainField('Размер озёр (средний диаметр)', 'lakeSize', 1, 200),
+      terrainField('Количество рек', 'riverCount', 0, 10),
+      terrainField('Ширина рек', 'riverWidth', 1, 50),
+      terrainField('Песок (% суши; остальное — трава)', 'sandPercent', 0, 100),
       {
         kind: 'number', label: 'Стартовая популяция', restart: true, min: 0, max: 5000, step: 1,
         get: (c) => c.population.initial, set: (c, v) => (c.population.initial = v),
@@ -252,6 +280,7 @@ export class SettingsPanel {
     for (const section of SECTIONS) {
       const fieldset = document.createElement('fieldset');
       fieldset.className = 'settings-panel__section';
+      if (section.title !== 'Мир') fieldset.classList.add('settings-evolution-only');
       const legend = document.createElement('legend');
       legend.textContent = section.title;
       fieldset.appendChild(legend);
@@ -261,7 +290,7 @@ export class SettingsPanel {
       if (section.title === 'Мир') {
         const terrainHint = document.createElement('p');
         terrainHint.className = 'settings-panel__status';
-        terrainHint.textContent = 'Зелёный — плодородная земля; песочный — рост растений 7%; голубой — непроходимая вода. Seed задаёт карту.';
+        terrainHint.textContent = 'Seed задаёт карту. Размеры — в единицах мира. Озёра и реки могут соединяться. Песок — процент суши, остальное — трава. Параметры ландшафта действуют в режиме «Трава, песок, реки и озёра» после сброса. Зелёный — плодородная земля; песочный — рост растений 7%; голубой — непроходимая вода.';
         fieldset.appendChild(terrainHint);
       }
       this._root.appendChild(fieldset);
@@ -325,6 +354,7 @@ export class SettingsPanel {
   private _createField(field: Field): HTMLElement {
     const row = document.createElement('label');
     row.className = 'settings-field';
+    if (field.label.startsWith('Стартов')) row.classList.add('settings-evolution-only');
     const label = document.createElement('span');
     label.className = 'settings-field__label';
     label.textContent = field.label;
@@ -373,6 +403,7 @@ export class SettingsPanel {
 
   private _render(): void {
     const draft = this._draft;
+    this._root.classList.toggle('settings-settlement', draft?.mode === 'settlement');
     const current = this._current;
     const next = this._next;
     let dirty = false;

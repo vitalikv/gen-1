@@ -19,6 +19,7 @@ export class SceneManager extends ContextSingleton<SceneManager> {
   private _resizeObserver: ResizeObserver | null = null;
   private _container: HTMLElement | null = null;
   private _bounds: WorldBounds = { width: 1, depth: 1 };
+  private readonly _boundsGroup = new THREE.Group();
   private readonly _frameListeners = new Set<FrameListener>();
 
   public readonly scene = new THREE.Scene();
@@ -54,6 +55,7 @@ export class SceneManager extends ContextSingleton<SceneManager> {
     this.camera.near = 0.1;
     this.camera.far = 1000;
 
+    this.scene.add(this._boundsGroup);
     this._addWorldBounds(bounds);
 
     this._resizeObserver = new ResizeObserver(() => this._resize());
@@ -72,6 +74,20 @@ export class SceneManager extends ContextSingleton<SceneManager> {
   public onFrame(listener: FrameListener): () => void {
     this._frameListeners.add(listener);
     return () => this._frameListeners.delete(listener);
+  }
+
+  public setWorldBounds(bounds: WorldBounds): void {
+    if (bounds.width === this._bounds.width && bounds.depth === this._bounds.depth) return;
+    for (const child of this._boundsGroup.children) {
+      const object = child as THREE.Mesh;
+      object.geometry.dispose();
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => material.dispose());
+    }
+    this._boundsGroup.clear(); this._bounds = { ...bounds };
+    this._addWorldBounds(bounds);
+    this.camera.position.set(0, 100, 0); this.camera.zoom = 1;
+    this._resize();
   }
 
   public dispose(): void {
@@ -102,11 +118,11 @@ export class SceneManager extends ContextSingleton<SceneManager> {
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     );
     ground.rotation.x = -Math.PI / 2;
-    this.scene.add(ground);
+    this._boundsGroup.add(ground);
 
     const grid = new THREE.GridHelper(Math.max(bounds.width, bounds.depth), 20, 0xc8c8c8, 0xe2e2e2);
     grid.position.y = 0.01;
-    this.scene.add(grid);
+    this._boundsGroup.add(grid);
   }
 
   private _resize(): void {

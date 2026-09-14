@@ -5,6 +5,9 @@ import { EnvironmentRenderer } from '@/rendering/EnvironmentRenderer';
 import { SceneManager } from '@/rendering/SceneManager';
 import { ViewSettings } from '@/rendering/ViewSettings';
 import { WorldRenderer } from '@/rendering/WorldRenderer';
+import { SettlementRenderer } from '@/rendering/SettlementRenderer';
+import { SettlementPanel } from '@/ui/SettlementPanel';
+import type { SettlementState } from '@/shared/settlement';
 import type { SimulationConfig } from '@/shared/config';
 import type { SimulationResponse } from '@/shared/protocol';
 import type { SavedSimulationState } from '@/shared/savedState';
@@ -38,6 +41,9 @@ function downloadState(state: SavedSimulationState): void {
 export class App extends ContextSingleton<App> {
   private _disposers: (() => void)[] = [];
   private _worldRenderer: WorldRenderer | null = null;
+  private _settlementRenderer: SettlementRenderer | null = null;
+  private _settlementPanel: SettlementPanel | null = null;
+  private _settlementState: SettlementState | undefined;
   private _environmentRenderer: EnvironmentRenderer | null = null;
   private _inspector: InspectorPanel | null = null;
   private _statsPanel: StatsPanel | null = null;
@@ -63,9 +69,15 @@ export class App extends ContextSingleton<App> {
     const runs = new RunComparisonStore();
     const worldRenderer = new WorldRenderer(sceneManager.scene, settings);
     this._worldRenderer = worldRenderer;
+    this._settlementRenderer = new SettlementRenderer(sceneManager.scene);
     this._environmentRenderer = new EnvironmentRenderer(sceneManager.scene);
 
     const cameraController = new CameraController(sceneManager.camera, sceneManager.canvas, (point) => {
+      if (this._settlementState) {
+        const id = this._settlementRenderer!.pick(point, PICK_TOLERANCE_PX * cameraController.worldUnitsPerPixel());
+        if (id) this._selectSettlement(id);
+        return;
+      }
       this._select(worldRenderer.pickOrganism(point, PICK_TOLERANCE_PX * cameraController.worldUnitsPerPixel()));
     });
 
@@ -111,6 +123,7 @@ export class App extends ContextSingleton<App> {
     });
 
     this._inspector = new InspectorPanel(rightColumn, () => this._select(null));
+    this._settlementPanel = new SettlementPanel(rightColumn, (id) => this._selectSettlement(id));
     this._statsPanel = new StatsPanel(rightColumn, settings, runs);
     this._notifier = new Notifier(container);
 
@@ -135,6 +148,8 @@ export class App extends ContextSingleton<App> {
     this._disposers = [];
     this._worldRenderer?.dispose();
     this._worldRenderer = null;
+    this._settlementRenderer?.dispose(); this._settlementRenderer = null;
+    this._settlementPanel?.dispose(); this._settlementPanel = null; this._settlementState = undefined;
     this._environmentRenderer?.dispose();
     this._environmentRenderer = null;
     this._inspector = null;
@@ -162,6 +177,13 @@ export class App extends ContextSingleton<App> {
     }
   }
 
+  private _selectSettlement(id: string): void {
+    this._settlementRenderer!.selected = id;
+    this._settlementPanel!.selected = id;
+    this._settlementRenderer!.setState(this._settlementState);
+    this._settlementPanel!.setState(this._settlementState);
+  }
+
   private async _loadStateFile(file: File): Promise<void> {
     let state: SavedSimulationState;
     try {
@@ -179,6 +201,10 @@ export class App extends ContextSingleton<App> {
     switch (response.type) {
       case 'ready':
       case 'snapshot':
+        this._settlementState = response.snapshot.settlement;
+        this._settlementRenderer?.setState(this._settlementState);
+        this._settlementPanel?.setState(this._settlementState);
+        document.getElementById('app')?.classList.toggle('settlement-mode', !!this._settlementState);
         this._worldRenderer?.setSnapshot(response.snapshot);
         this._statsPanel?.setSnapshot(response.snapshot);
         break;
@@ -189,6 +215,7 @@ export class App extends ContextSingleton<App> {
         break;
       case 'config':
         this._currentConfig = response.current;
+        SceneManager.inst('main').setWorldBounds(response.current.world);
         this._environmentRenderer?.setEnvironment(response.current);
         this._settingsPanel?.setConfig(response.current, response.next);
         this._statsPanel?.setSeasonEnabled(response.current.season.enabled);

@@ -64,7 +64,7 @@ export class ExperimentPanel {
 
     const note = document.createElement('p');
     note.className = 'panel__message';
-    note.textContent = 'Файл содержит всё для точного продолжения: конфигурацию, организмы, пищу, генератор и историю.';
+    note.textContent = 'Файл содержит состояние текущего режима для точного продолжения, включая ресурсы, груз и незавершённые задачи поселения.';
 
     const compareTitle = this._subtitle('Сравнение запусков');
     const compareRow = document.createElement('div');
@@ -81,6 +81,7 @@ export class ExperimentPanel {
     tableWrapper.appendChild(this._table);
 
     this._root.append(summary, stateTitle, stateRow, note, compareTitle, compareRow, this._list, tableWrapper);
+    for (const element of [compareTitle, compareRow, this._list, tableWrapper]) element.classList.add('evolution-only');
     container.appendChild(this._root);
 
     this._unsubscribers.push(

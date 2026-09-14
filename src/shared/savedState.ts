@@ -38,6 +38,7 @@ export interface SavedFood {
  * конфигурация, шаг, сущности, среда и состояние генератора случайных чисел
  */
 export interface SavedSimulationState {
+  settlement?: import('./settlement').SettlementState;
   format: typeof SAVED_STATE_FORMAT;
   modelVersion: number;
   savedAt: string;

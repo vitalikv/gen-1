@@ -37,6 +37,7 @@ export const FOOD_STRIDE = 3;
 
 /** Снимок состояния симуляции для отображения; массивы передаются с передачей владения */
 export interface SimulationSnapshot {
+  settlement?: import('./settlement').SettlementState;
   /** Номер последнего рассчитанного шага */
   step: number;
   /** Модельное время, секунды */

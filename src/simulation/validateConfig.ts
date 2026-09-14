@@ -32,6 +32,7 @@ function requireShape(path: string, shape: Shape): void {
 
 /** Проверяет значения конфигурации; бросает ошибку с путем к первому некорректному полю */
 export function validateConfig(config: SimulationConfig): void {
+  if (config.mode !== undefined && !['evolution', 'settlement'].includes(config.mode)) fail('mode', config.mode);
   requireNumber('seed', config.seed, { min: -Infinity, integer: true });
   requireNumber('dt', config.dt, { positive: true });
   requireNumber('world.width', config.world.width, { positive: true });
@@ -86,6 +87,15 @@ export function validateConfig(config: SimulationConfig): void {
     fail('environment.terrain', config.environment.terrain);
   }
   config.environment.obstacles.forEach((shape, i) => requireShape(`environment.obstacles[${i}]`, shape));
+  if (config.environment.terrainSettings !== undefined) {
+    const settings = config.environment.terrainSettings;
+    if (!settings || typeof settings !== 'object') fail('environment.terrainSettings', settings);
+    for (const [key, max] of [['lakeCount', 50], ['riverCount', 10], ['lakeSize', 200], ['riverWidth', 50], ['sandPercent', 100]] as const) {
+      const path = `environment.terrainSettings.${key}`;
+      requireNumber(path, settings[key], { integer: key.endsWith('Count'), positive: key === 'lakeSize' || key === 'riverWidth' });
+      if (settings[key] > max) fail(path, settings[key]);
+    }
+  }
   requireNumber('environment.baseFertility', config.environment.baseFertility);
   config.environment.zones.forEach((zone, i) => {
     requireShape(`environment.zones[${i}].shape`, zone.shape);
