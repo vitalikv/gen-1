@@ -84,6 +84,8 @@ export interface SimulationConfig {
     minWanderSpeedShare: number;
   };
   environment: {
+    /** Отсутствует у старых сохранений: прежний плоский мир. Меняется при сбросе. */
+    terrain?: 'plain' | 'geographic';
     /** Шаблон, по которому построены obstacles; фигуры — источник истины для модели */
     obstaclePreset: ObstaclePresetId;
     obstacles: Shape[];

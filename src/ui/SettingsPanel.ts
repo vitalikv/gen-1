@@ -42,6 +42,12 @@ const SECTIONS: Section[] = [
     fields: [
       { kind: 'number', label: 'Seed', restart: true, min: -2147483648, max: 4294967295, step: 1, get: (c) => c.seed, set: (c, v) => (c.seed = v) },
       {
+        kind: 'select', label: 'Местность', restart: true,
+        options: [{ value: 'geographic', label: 'Трава, песок, реки и озёра' }, { value: 'plain', label: 'Однородная равнина' }],
+        get: (c) => c.environment.terrain ?? 'plain',
+        set: (c, v) => { c.environment.terrain = v as 'plain' | 'geographic'; },
+      },
+      {
         kind: 'number', label: 'Стартовая популяция', restart: true, min: 0, max: 5000, step: 1,
         get: (c) => c.population.initial, set: (c, v) => (c.population.initial = v),
       },
@@ -194,6 +200,12 @@ export class SettingsPanel {
       fieldset.appendChild(legend);
       for (const field of section.fields) {
         fieldset.appendChild(this._createField(field));
+      }
+      if (section.title === 'Мир') {
+        const terrainHint = document.createElement('p');
+        terrainHint.className = 'settings-panel__status';
+        terrainHint.textContent = 'Зелёный — плодородная земля; песочный — рост растений 7%; голубой — непроходимая вода. Seed задаёт карту.';
+        fieldset.appendChild(terrainHint);
       }
       this._root.appendChild(fieldset);
     }

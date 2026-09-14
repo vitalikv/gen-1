@@ -159,7 +159,8 @@ export class BehaviorSystem {
       organism.heading = normalizeAngle(-organism.heading);
     }
 
-    const collided = world.environment.resolve(point, organism.bodySize, this._normal);
+    const shoreCollision = world.environment.terrain.stopAtShore(organism, point, organism.bodySize, this._normal);
+    const collided = world.environment.resolve(point, organism.bodySize, this._normal) || shoreCollision;
     this._collided = collided;
     if (collided) {
       point.x = world.clampX(point.x);

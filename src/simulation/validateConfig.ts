@@ -72,6 +72,9 @@ export function validateConfig(config: SimulationConfig): void {
   requireNumber('perception.fieldOfView', config.perception.fieldOfView, { positive: true });
   if (config.perception.fieldOfView > Math.PI * 2) fail('perception.fieldOfView', config.perception.fieldOfView);
 
+  if (config.environment.terrain !== undefined && !['plain', 'geographic'].includes(config.environment.terrain)) {
+    fail('environment.terrain', config.environment.terrain);
+  }
   config.environment.obstacles.forEach((shape, i) => requireShape(`environment.obstacles[${i}]`, shape));
   requireNumber('environment.baseFertility', config.environment.baseFertility);
   config.environment.zones.forEach((zone, i) => {

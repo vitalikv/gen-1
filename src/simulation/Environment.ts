@@ -1,4 +1,5 @@
 import type { SimulationConfig } from '@/shared/config';
+import { Terrain } from '@/shared/Terrain';
 import { containsPoint, type ResourceZone, type Shape } from '@/shared/environment';
 
 export interface MutablePoint {
@@ -13,6 +14,7 @@ const RESOLVE_PASSES = 3;
  * Среда мира: препятствия, плодородие зон и сезонность
  */
 export class Environment {
+  public readonly terrain: Terrain;
   public readonly obstacles: readonly Shape[];
   public readonly zones: readonly ResourceZone[];
   public readonly baseFertility: number;
@@ -20,6 +22,7 @@ export class Environment {
   private readonly _season: SimulationConfig['season'];
 
   public constructor(config: SimulationConfig) {
+    this.terrain = new Terrain(config);
     this.obstacles = config.environment.obstacles;
     this.zones = config.environment.zones;
     this.baseFertility = config.environment.baseFertility;
@@ -29,6 +32,7 @@ export class Environment {
 
   /** Пересекает ли круг радиуса radius какое-либо препятствие */
   public isBlocked(x: number, z: number, radius: number): boolean {
+    if (this.terrain.isBlocked(x, z, radius)) return true;
     for (const obstacle of this.obstacles) {
       if (obstacle.kind === 'circle') {
         if ((x - obstacle.x) ** 2 + (z - obstacle.z) ** 2 < (obstacle.radius + radius) ** 2) {
@@ -96,6 +100,16 @@ export class Environment {
       }
     }
 
+    if (this.terrain.enabled && this.isBlocked(point.x, point.z, radius)) {
+      const land = this.terrain.nearestLand(point.x, point.z, radius,
+        (x, z) => !this.isBlocked(x, z, radius));
+      const distance = Math.hypot(land.x - point.x, land.z - point.z);
+      normal.x = (land.x - point.x) / distance;
+      normal.z = (land.z - point.z) / distance;
+      point.x = land.x;
+      point.z = land.z;
+      collided = true;
+    }
     return collided;
   }
 
@@ -107,7 +121,7 @@ export class Environment {
         fertility = zone.fertility;
       }
     }
-    return fertility < 0 ? this.baseFertility : fertility;
+    return (fertility < 0 ? this.baseFertility : fertility) * this.terrain.fertilityAt(x, z);
   }
 
   /** Сезонный множитель плодородия: 1 + amplitude * sin(2π t / period), не меньше 0 */

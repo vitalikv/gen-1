@@ -189,7 +189,7 @@ export class App extends ContextSingleton<App> {
         break;
       case 'config':
         this._currentConfig = response.current;
-        this._environmentRenderer?.setEnvironment(response.current.environment);
+        this._environmentRenderer?.setEnvironment(response.current);
         this._settingsPanel?.setConfig(response.current, response.next);
         this._statsPanel?.setSeasonEnabled(response.current.season.enabled);
         if (this._pendingNotice) {

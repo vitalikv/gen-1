@@ -15,7 +15,7 @@ export const DEFAULT_SIMULATION_CONFIG: Readonly<SimulationConfig> = {
   perception: { fieldOfView: Math.PI * 1.5, memoryDuration: 20 },
   mutation: { rate: 0.2, sigmaScale: 1 },
   behavior: { turnRate: 2, minWanderSpeedShare: 0.1 },
-  environment: { obstaclePreset: 'none', obstacles: [], zonePreset: 'uniform', baseFertility: 1, zones: [] },
+  environment: { terrain: 'geographic', obstaclePreset: 'none', obstacles: [], zonePreset: 'uniform', baseFertility: 1, zones: [] },
   season: { enabled: false, period: 120, amplitude: 0.6 },
 };
 

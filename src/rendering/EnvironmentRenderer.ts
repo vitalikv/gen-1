@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { SimulationConfig } from '@/shared/config';
+import { Terrain } from '@/shared/Terrain';
 import type { Shape } from '@/shared/environment';
 import { OBSTACLE_COLOR, ZONE_COLOR } from './colors';
 
@@ -30,13 +31,37 @@ export class EnvironmentRenderer {
     scene.add(this._group);
   }
 
-  public setEnvironment(environment: SimulationConfig['environment']): void {
-    const key = JSON.stringify([environment.obstacles, environment.zones]);
+  public setEnvironment(config: SimulationConfig): void {
+    const environment = config.environment;
+    const key = JSON.stringify([config.seed, config.world, environment]);
     if (key === this._key) {
       return;
     }
     this._key = key;
     this._clear();
+    const terrain = new Terrain(config);
+    if (terrain.enabled) {
+      const pixels = new Uint8Array(terrain.cells.length * 4);
+      const palette = [[153, 183, 112], [222, 201, 146], [90, 164, 194]];
+      for (let i = 0; i < terrain.cells.length; i++) {
+        const color = palette[terrain.cells[i]!]!;
+        const variation = ((i * 13 + Math.floor(i / terrain.columns) * 7) % 5) - 2;
+        for (let channel = 0; channel < 3; channel++) pixels[i * 4 + channel] = color[channel]! + variation;
+        pixels[i * 4 + 3] = 255;
+      }
+      const texture = new THREE.DataTexture(pixels, terrain.columns, terrain.rows);
+      // The rotated plane's v axis points toward -Z; reverse texture rows.
+      texture.flipY = true;
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.magFilter = THREE.NearestFilter;
+      texture.needsUpdate = true;
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(config.world.width, config.world.depth).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ map: texture }),
+      );
+      mesh.position.y = 0.002;
+      this._group.add(mesh);
+    }
 
     for (const zone of environment.zones) {
       const mesh = new THREE.Mesh(
@@ -69,6 +94,7 @@ export class EnvironmentRenderer {
     for (const child of this._group.children) {
       const mesh = child as THREE.Mesh;
       mesh.geometry.dispose();
+      (mesh.material as THREE.MeshBasicMaterial).map?.dispose();
       (mesh.material as THREE.Material).dispose();
     }
     this._group.clear();
