@@ -9,36 +9,64 @@ body {
 #app {
   position: fixed;
   inset: 0;
+  color: #d5dbe3;
+  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 #app canvas {
   display: block;
 }
 
-.control-panel {
-  position: absolute;
-  top: 12px;
-  left: 12px;
+/* Панели */
+
+.panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
   border: 1px solid #2c3644;
   border-radius: 6px;
-  background: rgba(16, 20, 26, 0.9);
-  color: #d5dbe3;
-  font: 13px/1.4 system-ui, sans-serif;
+  background: rgba(16, 20, 26, 0.92);
   user-select: none;
 }
 
-.control-panel__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.panel[hidden] {
+  display: none;
 }
 
-.control-panel button,
-.control-panel select {
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.panel__close {
+  padding: 0 8px;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.panel__separator {
+  width: 100%;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid #2c3644;
+}
+
+.panel__message {
+  margin: 0;
+  color: #898781;
+}
+
+.panel button,
+.panel select {
   padding: 4px 10px;
   border: 1px solid #3a4656;
   border-radius: 4px;
@@ -48,17 +76,167 @@ body {
   cursor: pointer;
 }
 
-.control-panel button:disabled,
-.control-panel select:disabled {
+.panel button:disabled,
+.panel select:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.control-panel__stats {
+/* Панель управления */
+
+.control-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 280px;
+}
+
+.control-panel__row {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-panel__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
 }
 
 .control-panel__value {
   font-variant-numeric: tabular-nums;
+}
+
+.color-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #898781;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.color-legend__gradient {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+}
+
+/* Правая колонка: инспектор и статистика */
+
+.side-column {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.side-column > .panel {
+  pointer-events: auto;
+}
+
+.inspector-panel__list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.inspector-panel__list dt {
+  color: #898781;
+}
+
+.inspector-panel__list dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.inspector-panel__genes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gene-row {
+  display: grid;
+  grid-template-columns: 136px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.gene-row__bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #262e3a;
+  overflow: hidden;
+}
+
+.gene-row__fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #3987e5;
+}
+
+.gene-row__value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Графики */
+
+.chart {
+  margin: 0;
+}
+
+.chart__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.chart__title {
+  color: #d5dbe3;
+}
+
+.chart__readout {
+  color: #c3c2b7;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chart__legend {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 2px;
+  color: #c3c2b7;
+  font-size: 11px;
+}
+
+.chart__legend[hidden] {
+  display: none;
+}
+
+.chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chart__swatch {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.chart__canvas {
+  width: 100%;
 }

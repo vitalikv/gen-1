@@ -1,10 +1,32 @@
 import { ContextSingleton } from '@/core/ContextSingleton';
 import { MAX_SIMULATION_SPEED, MIN_SIMULATION_SPEED } from '@/core/config';
-import { SeededRandom } from '@/core/SeededRandom';
-import type { SimulationConfig, SimulationSnapshot } from '@/shared/protocol';
+import type { SeededRandom } from '@/core/SeededRandom';
+import type { SimulationConfig } from '@/shared/config';
+import { GENE_NAMES } from '@/shared/genes';
+import {
+  FOOD_STRIDE,
+  ORGANISM_ACTIONS,
+  ORGANISM_FIELD,
+  ORGANISM_STRIDE,
+  organismGeneField,
+  type OrganismDetails,
+  type SimulationSnapshot,
+  type StatsSample,
+} from '@/shared/snapshot';
+import { StatisticsCollector } from './StatisticsCollector';
+import { BehaviorSystem } from './systems/BehaviorSystem';
+import { EnergySystem } from './systems/EnergySystem';
+import { EvolutionSystem } from './systems/EvolutionSystem';
+import { FoodSystem } from './systems/FoodSystem';
+import { World } from './World';
 
 /** Максимальное отставание по реальному времени, которое догоняет симуляция */
 const MAX_BACKLOG_REAL_SECONDS = 0.25;
+/** Интервал точек истории, секунды модели */
+const STATS_SAMPLE_INTERVAL = 1;
+const STATS_MAX_SAMPLES = 1800;
+
+const GENE_FIELDS = GENE_NAMES.map((name) => organismGeneField(name));
 
 /**
  * Фиксированный шаг, состояние запуска и порядок расчетов
@@ -12,12 +34,18 @@ const MAX_BACKLOG_REAL_SECONDS = 0.25;
  */
 export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   private _config: SimulationConfig | null = null;
-  private _random = new SeededRandom(0);
+  private _world: World | null = null;
+  private _statistics: StatisticsCollector | null = null;
   private _step = 0;
   private _running = false;
   private _speed = 1;
   /** Накопленное модельное время, которое еще не рассчитано шагами */
   private _accumulator = 0;
+
+  private readonly _foodSystem = new FoodSystem();
+  private readonly _behaviorSystem = new BehaviorSystem();
+  private readonly _energySystem = new EnergySystem();
+  private readonly _evolutionSystem = new EvolutionSystem();
 
   public get isInitialized(): boolean {
     return this._config !== null;
@@ -39,15 +67,28 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     return this._speed;
   }
 
+  public get world(): World {
+    return this._requireWorld();
+  }
+
   public get random(): SeededRandom {
-    return this._random;
+    return this._requireWorld().random;
+  }
+
+  public get statsVersion(): number {
+    return this._statistics?.version ?? 0;
+  }
+
+  public get statsHistory(): readonly StatsSample[] {
+    return this._statistics?.history ?? [];
   }
 
   public init(config: SimulationConfig): void {
     if (!(config.dt > 0) || !Number.isFinite(config.dt)) {
       throw new Error(`SimulationEngine: некорректный шаг dt = ${config.dt}`);
     }
-    this._config = { ...config };
+    this._config = structuredClone(config);
+    this._statistics = new StatisticsCollector(STATS_SAMPLE_INTERVAL / config.dt, STATS_MAX_SAMPLES);
     this._speed = 1;
     this.reset();
   }
@@ -55,7 +96,8 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   /** Возвращает мир в начальное состояние с тем же seed; симуляция ставится на паузу */
   public reset(): void {
     const config = this._requireConfig();
-    this._random = new SeededRandom(config.seed);
+    this._world = World.create(config);
+    this._statistics!.reset(this._world);
     this._step = 0;
     this._running = false;
     this._accumulator = 0;
@@ -121,17 +163,80 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   }
 
   public getSnapshot(): SimulationSnapshot {
+    const world = this._requireWorld();
+    const { organisms, food } = world;
+
+    const organismIds = new Uint32Array(organisms.length);
+    const organismData = new Float32Array(organisms.length * ORGANISM_STRIDE);
+    for (let i = 0; i < organisms.length; i++) {
+      const organism = organisms[i]!;
+      const offset = i * ORGANISM_STRIDE;
+      organismIds[i] = organism.id;
+      organismData[offset + ORGANISM_FIELD.x] = organism.x;
+      organismData[offset + ORGANISM_FIELD.z] = organism.z;
+      organismData[offset + ORGANISM_FIELD.heading] = organism.heading;
+      organismData[offset + ORGANISM_FIELD.energyRatio] = organism.energyRatio;
+      organismData[offset + ORGANISM_FIELD.action] = ORGANISM_ACTIONS.indexOf(organism.action);
+      for (let g = 0; g < GENE_NAMES.length; g++) {
+        organismData[offset + GENE_FIELDS[g]!] = organism.genome.get(GENE_NAMES[g]!);
+      }
+    }
+
+    const foodData = new Float32Array(food.length * FOOD_STRIDE);
+    for (let i = 0; i < food.length; i++) {
+      foodData[i * FOOD_STRIDE] = food[i]!.x;
+      foodData[i * FOOD_STRIDE + 1] = food[i]!.z;
+    }
+
     return {
       step: this._step,
       time: this.time,
       running: this._running,
       speed: this._speed,
+      organismIds,
+      organisms: organismData,
+      food: foodData,
     };
   }
 
-  /** Один шаг модели; системы мира будут вызываться здесь в фиксированном порядке */
+  public getOrganismDetails(id: number): OrganismDetails | null {
+    const organism = this._requireWorld().getOrganism(id);
+    if (!organism || !organism.alive) {
+      return null;
+    }
+
+    return {
+      id: organism.id,
+      parentId: organism.parentId,
+      generation: organism.generation,
+      age: organism.age,
+      energy: organism.energy,
+      capacity: organism.capacity,
+      action: organism.action,
+      genes: organism.genome.toValues(),
+    };
+  }
+
+  /** Один шаг модели; порядок систем и обхода организмов фиксирован */
   private _tick(): void {
+    const world = this._requireWorld();
+    const { dt } = world.config;
+
+    this._foodSystem.spawn(world, dt);
+    this._foodSystem.rebuildIndex(world);
+
+    for (const organism of world.organisms) {
+      const reachableFood = this._behaviorSystem.update(world, organism, dt);
+      if (reachableFood) {
+        this._energySystem.eat(organism, reachableFood);
+      }
+      this._energySystem.update(world, organism, dt);
+      this._evolutionSystem.tryReproduce(world, organism);
+    }
+
+    world.commitStep();
     this._step++;
+    this._statistics!.record(world, this._step, this.time);
   }
 
   private _requireConfig(): SimulationConfig {
@@ -139,5 +244,10 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       throw new Error('SimulationEngine: симуляция не инициализирована');
     }
     return this._config;
+  }
+
+  private _requireWorld(): World {
+    this._requireConfig();
+    return this._world!;
   }
 }

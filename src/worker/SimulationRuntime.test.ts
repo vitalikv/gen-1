@@ -1,20 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SimulationConfig, SimulationResponse } from '@/shared/protocol';
+import type { SimulationResponse } from '@/shared/protocol';
 import { SimulationEngine } from '@/simulation/SimulationEngine';
+import { createTestConfig } from '@/simulation/testConfig';
 import { SimulationRuntime } from './SimulationRuntime';
 
-const CONFIG: SimulationConfig = { seed: 1, worldWidth: 100, worldDepth: 100, dt: 0.25 };
+const CONFIG = createTestConfig({ seed: 1 });
 
 describe('SimulationRuntime', () => {
   let responses: SimulationResponse[];
+  let transfers: ArrayBuffer[][];
   let runtime: SimulationRuntime;
   let engine: SimulationEngine;
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     responses = [];
+    transfers = [];
     engine = SimulationEngine.inst('runtime-test');
-    runtime = new SimulationRuntime(engine, (response) => responses.push(response));
+    runtime = new SimulationRuntime(engine, (response, transfer = []) => {
+      responses.push(response);
+      transfers.push(transfer);
+    });
   });
 
   afterEach(() => {
@@ -22,15 +28,15 @@ describe('SimulationRuntime', () => {
     SimulationEngine.destroyAllInstances();
   });
 
-  const lastSnapshot = () => {
-    const snapshots = responses.filter((response) => response.type === 'snapshot');
-    return snapshots.at(-1)?.snapshot;
-  };
+  const lastOfType = <T extends SimulationResponse['type']>(type: T) =>
+    responses.filter((response): response is Extract<SimulationResponse, { type: T }> => response.type === type).at(-1);
 
-  it('отвечает ready и снимком на init', () => {
+  it('отвечает ready, снимком и статистикой на init; буферы снимка передаются', () => {
     runtime.handleCommand({ type: 'init', config: CONFIG });
 
-    expect(responses.map((response) => response.type)).toEqual(['ready', 'snapshot']);
+    expect(responses.map((response) => response.type)).toEqual(['ready', 'snapshot', 'stats']);
+    expect(transfers[0]).toHaveLength(3);
+    expect(transfers[1]).toHaveLength(3);
   });
 
   it('после start считает шаги по реальному времени и отправляет снимки', () => {
@@ -41,7 +47,7 @@ describe('SimulationRuntime', () => {
 
     expect(engine.step).toBeGreaterThanOrEqual(3);
     expect(engine.step).toBeLessThanOrEqual(4);
-    expect(lastSnapshot()?.step).toBe(engine.step);
+    expect(lastOfType('snapshot')?.snapshot.step).toBe(engine.step);
   });
 
   it('на паузе останавливает расчет', () => {
@@ -54,7 +60,7 @@ describe('SimulationRuntime', () => {
     vi.advanceTimersByTime(5000);
 
     expect(engine.step).toBe(pausedStep);
-    expect(lastSnapshot()).toMatchObject({ step: pausedStep, running: false });
+    expect(lastOfType('snapshot')?.snapshot).toMatchObject({ step: pausedStep, running: false });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -62,10 +68,23 @@ describe('SimulationRuntime', () => {
     runtime.handleCommand({ type: 'init', config: CONFIG });
 
     runtime.handleCommand({ type: 'step' });
-    expect(lastSnapshot()?.step).toBe(1);
+    expect(lastOfType('snapshot')?.snapshot.step).toBe(1);
 
     runtime.handleCommand({ type: 'reset' });
-    expect(lastSnapshot()?.step).toBe(0);
+    expect(lastOfType('snapshot')?.snapshot.step).toBe(0);
+  });
+
+  it('отправляет подробности выбранного организма и снимает выбор при reset', () => {
+    runtime.handleCommand({ type: 'init', config: CONFIG });
+    const id = lastOfType('snapshot')!.snapshot.organismIds[0]!;
+
+    runtime.handleCommand({ type: 'inspectOrganism', id });
+    expect(lastOfType('organismDetails')).toMatchObject({ id, details: { id } });
+
+    runtime.handleCommand({ type: 'reset' });
+    const count = responses.filter((response) => response.type === 'organismDetails').length;
+    runtime.handleCommand({ type: 'step' });
+    expect(responses.filter((response) => response.type === 'organismDetails')).toHaveLength(count);
   });
 
   it('пробрасывает ошибку команды до init', () => {

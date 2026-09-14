@@ -6,6 +6,8 @@ export interface WorldBounds {
   depth: number;
 }
 
+export type FrameListener = (now: number) => void;
+
 /** Запас вокруг границ мира в кадре */
 const VIEW_PADDING = 1.1;
 
@@ -17,9 +19,17 @@ export class SceneManager extends ContextSingleton<SceneManager> {
   private _resizeObserver: ResizeObserver | null = null;
   private _container: HTMLElement | null = null;
   private _bounds: WorldBounds = { width: 1, depth: 1 };
+  private readonly _frameListeners = new Set<FrameListener>();
 
   public readonly scene = new THREE.Scene();
   public readonly camera = new THREE.OrthographicCamera();
+
+  public get canvas(): HTMLCanvasElement {
+    if (!this._renderer) {
+      throw new Error('SceneManager: не инициализирован');
+    }
+    return this._renderer.domElement;
+  }
 
   public init(container: HTMLElement, bounds: WorldBounds): void {
     if (this._renderer) {
@@ -50,12 +60,24 @@ export class SceneManager extends ContextSingleton<SceneManager> {
     this._resizeObserver.observe(container);
     this._resize();
 
-    renderer.setAnimationLoop(() => renderer.render(this.scene, this.camera));
+    renderer.setAnimationLoop((now) => {
+      for (const listener of this._frameListeners) {
+        listener(now);
+      }
+      renderer.render(this.scene, this.camera);
+    });
+  }
+
+  /** Вызывается перед отрисовкой каждого кадра */
+  public onFrame(listener: FrameListener): () => void {
+    this._frameListeners.add(listener);
+    return () => this._frameListeners.delete(listener);
   }
 
   public dispose(): void {
     this._resizeObserver?.disconnect();
     this._resizeObserver = null;
+    this._frameListeners.clear();
 
     if (this._renderer) {
       this._renderer.setAnimationLoop(null);

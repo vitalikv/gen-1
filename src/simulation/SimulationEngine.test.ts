@@ -1,14 +1,28 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { SimulationConfig } from '@/shared/protocol';
+import { GENE_DEFINITIONS, GENE_NAMES } from '@/shared/genes';
+import { ORGANISM_STRIDE, organismGeneField } from '@/shared/snapshot';
 import { SimulationEngine } from './SimulationEngine';
+import { createTestConfig } from './testConfig';
 
-/** dt = 0.25 точно представим в двоичном виде, поэтому шаги считаются без погрешности */
-const CONFIG: SimulationConfig = { seed: 123, worldWidth: 100, worldDepth: 100, dt: 0.25 };
+const CONFIG = createTestConfig({ seed: 123 });
 
-function createEngine(context: string): SimulationEngine {
+function createEngine(context: string, config = CONFIG): SimulationEngine {
   const engine = SimulationEngine.inst(context);
-  engine.init(CONFIG);
+  engine.init(config);
   return engine;
+}
+
+/** Полное состояние мира для сравнения запусков */
+function fingerprint(engine: SimulationEngine) {
+  const snapshot = engine.getSnapshot();
+  return {
+    step: snapshot.step,
+    randomState: engine.random.state,
+    organismIds: Array.from(snapshot.organismIds),
+    organisms: Array.from(snapshot.organisms),
+    food: Array.from(snapshot.food),
+    stats: engine.statsHistory.map((sample) => ({ ...sample })),
+  };
 }
 
 describe('SimulationEngine', () => {
@@ -16,10 +30,15 @@ describe('SimulationEngine', () => {
     SimulationEngine.destroyAllInstances();
   });
 
-  it('после init стоит на паузе на нулевом шаге', () => {
+  it('после init стоит на паузе на нулевом шаге со стартовой популяцией и пищей', () => {
     const engine = createEngine('test');
+    const snapshot = engine.getSnapshot();
 
-    expect(engine.getSnapshot()).toEqual({ step: 0, time: 0, running: false, speed: 1 });
+    expect(snapshot).toMatchObject({ step: 0, time: 0, running: false, speed: 1 });
+    expect(snapshot.organismIds.length).toBe(CONFIG.population.initial);
+    expect(snapshot.organisms.length).toBe(CONFIG.population.initial * ORGANISM_STRIDE);
+    expect(engine.world.food.length).toBe(CONFIG.food.initial);
+    expect(engine.statsHistory).toHaveLength(1);
   });
 
   it('отклоняет команды до init', () => {
@@ -71,13 +90,11 @@ describe('SimulationEngine', () => {
     engine.start();
 
     engine.update(1000, 2);
-    let steps = 0;
     for (let i = 0; i < 100; i++) {
-      steps += engine.update(0, 2);
+      engine.update(0, 2);
     }
 
     expect(engine.step).toBeLessThan(10);
-    expect(steps).toBeLessThan(10);
   });
 
   it('step ставит на паузу и рассчитывает один шаг', () => {
@@ -101,31 +118,77 @@ describe('SimulationEngine', () => {
     expect(() => engine.setSpeed(Number.NaN)).toThrow();
   });
 
-  it('reset возвращает шаг и генератор к начальному состоянию', () => {
+  it('reset возвращает мир к начальному состоянию', () => {
     const engine = createEngine('test');
-    const initialRandomState = engine.random.state;
+    const initial = fingerprint(engine);
 
     engine.start();
     engine.advance(50);
-    engine.random.next();
     engine.reset();
 
-    expect(engine.getSnapshot()).toEqual({ step: 0, time: 0, running: false, speed: 1 });
-    expect(engine.random.state).toBe(initialRandomState);
+    expect(engine.running).toBe(false);
+    expect(fingerprint(engine)).toEqual(initial);
   });
 
-  it('воспроизводит состояние при одинаковых seed и командах', () => {
-    const run = (context: string): [number, number] => {
-      const engine = createEngine(context);
-      engine.setSpeed(2);
-      engine.start();
-      engine.update(0.1, 3);
-      engine.update(0.2, 3);
-      engine.stepOnce();
-      engine.advance(20);
-      return [engine.step, engine.random.state];
-    };
+  it('воспроизводит мир при одинаковых seed и числе шагов', () => {
+    const a = createEngine('a');
+    const b = createEngine('b');
+    a.advance(400);
+    b.advance(400);
 
-    expect(run('a')).toEqual(run('b'));
+    expect(fingerprint(a)).toEqual(fingerprint(b));
+  });
+
+  it('дает другой мир при другом seed', () => {
+    const a = createEngine('a');
+    const b = createEngine('b', createTestConfig({ seed: 124 }));
+    a.advance(50);
+    b.advance(50);
+
+    expect(fingerprint(a).organisms).not.toEqual(fingerprint(b).organisms);
+  });
+
+  it('исход не зависит от скорости и разбиения на порции', () => {
+    const direct = createEngine('direct');
+    direct.advance(120);
+
+    const chunked = createEngine('chunked');
+    chunked.setSpeed(16);
+    chunked.start();
+    while (chunked.step < 120) {
+      chunked.update(0.05, Math.min(7, 120 - chunked.step));
+    }
+    chunked.pause();
+
+    expect(fingerprint(chunked).organisms).toEqual(fingerprint(direct).organisms);
+    expect(chunked.random.state).toBe(direct.random.state);
+  });
+
+  it('популяция живет, размножается и эволюционирует в допустимых диапазонах', () => {
+    const engine = createEngine('life', createTestConfig({ seed: 7, dt: 1 / 30 }));
+    engine.advance(30 * 60);
+
+    const { world } = engine;
+    expect(world.birthsTotal).toBeGreaterThan(0);
+    expect(world.deathsTotal).toBeGreaterThan(0);
+    expect(Math.max(...world.organisms.map((organism) => organism.generation))).toBeGreaterThan(1);
+
+    const snapshot = engine.getSnapshot();
+    for (const name of GENE_NAMES) {
+      const { min, max } = GENE_DEFINITIONS[name];
+      for (let i = 0; i < snapshot.organismIds.length; i++) {
+        const value = snapshot.organisms[i * ORGANISM_STRIDE + organismGeneField(name)]!;
+        expect(value).toBeGreaterThanOrEqual(Math.fround(min));
+        expect(value).toBeLessThanOrEqual(Math.fround(max));
+      }
+    }
+  });
+
+  it('отдает подробности живого организма и null для отсутствующего', () => {
+    const engine = createEngine('test');
+    const id = engine.getSnapshot().organismIds[0]!;
+
+    expect(engine.getOrganismDetails(id)).toMatchObject({ id, parentId: null, generation: 0 });
+    expect(engine.getOrganismDetails(999_999)).toBeNull();
   });
 });

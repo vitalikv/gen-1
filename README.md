@@ -17,12 +17,19 @@ npm run build      # проверка типов и сборка в dist/
 ```text
 src/
   app/           # App и запуск
-  core/          # ContextSingleton, SeededRandom, конфигурация
-  simulation/    # SimulationEngine и модель мира, без Three.js и DOM
+  core/          # ContextSingleton, SeededRandom, конфигурация по умолчанию
+  simulation/    # SimulationEngine, World, Organism, Genome, SpatialIndex, системы; без Three.js и DOM
   worker/        # точка входа Worker, SimulationRuntime, SimulationBridge
-  rendering/     # SceneManager и отображение
-  ui/            # панель управления
-  shared/        # типы команд, ответов и снимков
+  rendering/     # SceneManager, WorldRenderer, CameraController
+  ui/            # панель управления, инспектор, графики
+  shared/        # конфигурация модели, гены, формат снимков, протокол
 ```
+
+## Управление
+
+- Перетаскивание — перемещение карты, колесо — масштаб.
+- Щелчок по организму — инспектор; × в инспекторе снимает выбор.
+
+Параметры модели по умолчанию — `src/core/config.ts`, диапазоны генов — `src/shared/genes.ts`.
 
 Код в `src/simulation` и потока Worker проверяется через `tsconfig.worker.json` без библиотеки DOM. `SimulationBridge` работает в главном потоке.

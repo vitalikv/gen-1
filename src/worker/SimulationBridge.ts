@@ -1,5 +1,6 @@
 import { ContextSingleton } from '@/core/ContextSingleton';
-import type { SimulationCommand, SimulationResponse, SimulationSnapshot } from '@/shared/protocol';
+import type { SimulationCommand, SimulationResponse } from '@/shared/protocol';
+import type { SimulationSnapshot } from '@/shared/snapshot';
 
 export type SimulationListener = (response: SimulationResponse) => void;
 

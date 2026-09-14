@@ -4,8 +4,8 @@ import { SimulationRuntime } from './SimulationRuntime';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
-function send(response: SimulationResponse): void {
-  scope.postMessage(response);
+function send(response: SimulationResponse, transfer: Transferable[] = []): void {
+  scope.postMessage(response, transfer);
 }
 
 const runtime = new SimulationRuntime(SimulationEngine.inst('simulation'), send);
