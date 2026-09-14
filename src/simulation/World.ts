@@ -1,11 +1,12 @@
 import { SeededRandom } from '@/core/SeededRandom';
 import { applyLiveSettings, FOOD_RADIUS, type SimulationConfig } from '@/shared/config';
+import { GENE_DEFINITIONS, PREDATOR_INITIAL_GENES } from '@/shared/genes';
 import type { SavedSimulationState } from '@/shared/savedState';
 import { Environment, type MutablePoint } from './Environment';
 import { Genome } from './Genome';
 import { Organism } from './Organism';
 import { SpatialIndex } from './SpatialIndex';
-import type { Sex } from '@/shared/life';
+import type { Diet, Sex } from '@/shared/life';
 
 export interface Food {
   readonly id: number;
@@ -50,6 +51,12 @@ export class World {
 
   public birthsTotal = 0;
   public deathsTotal = 0;
+  /** Травоядные, пойманные хищниками; входят в deathsTotal */
+  public killsTotal = 0;
+  /** Хищники, пришедшие извне */
+  public immigrantsTotal = 0;
+  /** Время, прошедшее с момента, когда хищников стало меньше двух */
+  public immigrationTimer = 0;
   /** Накопленная дробная часть попыток появления пищи */
   public foodSpawnAccumulator = 0;
 
@@ -77,26 +84,43 @@ export class World {
       world.trySpawnFood();
     }
 
-    for (let i = 0; i < config.population.initial; i++) {
-      const genome = Genome.createInitial(world.random);
-      const point = world.randomFreePoint(genome.get('size'));
-      const organism = new Organism({
-        id: world._nextOrganismId++,
-        parentId: null,
-        sex: i % 2 === 0 ? 'female' : 'male',
-        generation: 0,
-        genome,
-        x: point.x,
-        z: point.z,
-        heading: world.random.range(0, Math.PI * 2),
-        energy: config.energy.capacityPerSize * genome.get('size') * config.energy.initialShare,
-        capacityPerSize: config.energy.capacityPerSize,
-      });
-      world._addOrganism(organism);
+    const founders = [
+      ...Array.from({ length: config.population.initial }, (_, i) => ({ diet: 'herbivore' as const, i })),
+      ...Array.from({ length: config.population.initialPredators }, (_, i) => ({ diet: 'predator' as const, i })),
+    ];
+    for (const { diet, i } of founders) {
+      const organism = world._addFounder(diet, i % 2 === 0 ? 'female' : 'male', null);
       organism.age = config.lifecycle.minReproductionAge + world.random.range(0, config.lifecycle.maxAge * 0.3);
     }
 
     return world;
+  }
+
+  /**
+   * Приток хищников извне: если вид был в эксперименте и хищников меньше двух,
+   * раз в immigrationInterval секунд с края карты приходит взрослая пара со стартовыми генами
+   * Вызывается между шагами, до построения индексов
+   */
+  public updateImmigration(dt: number): void {
+    const { immigrationInterval } = this.config.predation;
+    let predators = 0;
+    for (const organism of this.organisms) if (organism.isPredator) predators++;
+    if (immigrationInterval <= 0 || this.config.population.initialPredators <= 0 || predators >= 2) {
+      this.immigrationTimer = 0;
+      return;
+    }
+    this.immigrationTimer += dt;
+    if (this.immigrationTimer + 1e-9 < immigrationInterval) return;
+    this.immigrationTimer = 0;
+    const female = this._addFounder('predator', 'female', this._randomEdgePoint(PREDATOR_INITIAL_GENES.size ?? GENE_DEFINITIONS.size.initial));
+    // Пара приходит вместе: разминувшиеся по краям карты особи не нашли бы друг друга.
+    const male = this._addFounder('predator', 'male', { x: female.x, z: female.z });
+    for (const organism of [female, male]) {
+      organism.age = this.config.lifecycle.minReproductionAge;
+      // Пришедшие извне сыты: иначе пара гибнет от голода, не успев найти добычу.
+      organism.energy = organism.capacity;
+    }
+    this.immigrantsTotal += 2;
   }
 
   /** Восстанавливает мир из сохранения без использования генератора случайных чисел */
@@ -108,6 +132,9 @@ export class World {
     world.foodSpawnAccumulator = saved.foodSpawnAccumulator;
     world.birthsTotal = saved.birthsTotal;
     world.deathsTotal = saved.deathsTotal;
+    world.killsTotal = saved.killsTotal;
+    world.immigrantsTotal = saved.immigrantsTotal;
+    world.immigrationTimer = saved.immigrationTimer;
 
     for (const item of saved.organisms) {
       const organism = new Organism({
@@ -220,6 +247,7 @@ export class World {
       parentId: params.parent.id,
       fatherId: params.fatherId ?? null,
       sex: params.sex ?? (this.random.next() < 0.5 ? 'female' : 'male'),
+      diet: params.parent.life.diet,
       generation: params.generation ?? params.parent.generation + 1,
       genome: params.genome,
       x: point.x,
@@ -279,6 +307,9 @@ export class World {
       foodSpawnAccumulator: this.foodSpawnAccumulator,
       birthsTotal: this.birthsTotal,
       deathsTotal: this.deathsTotal,
+      killsTotal: this.killsTotal,
+      immigrantsTotal: this.immigrantsTotal,
+      immigrationTimer: this.immigrationTimer,
       organisms: this.organisms.map((organism) => ({
         id: organism.id,
         parentId: organism.parentId,
@@ -296,6 +327,45 @@ export class World {
       })),
       food: this.food.map((food) => ({ ...food })),
     };
+  }
+
+  /** Особь поколения 0 со стартовыми генами вида; без заданной точки — в случайном свободном месте */
+  private _addFounder(diet: Diet, sex: Sex, at: MutablePoint | null): Organism {
+    const genome = Genome.createInitial(this.random, diet === 'predator' ? PREDATOR_INITIAL_GENES : {});
+    const point = at ? { ...at } : this.randomFreePoint(genome.get('size'));
+    if (at && this.environment.resolve(point, genome.get('size'), this._normal)) {
+      point.x = this.clampX(point.x);
+      point.z = this.clampZ(point.z);
+    }
+    const organism = new Organism({
+      id: this._nextOrganismId++,
+      parentId: null,
+      sex,
+      diet,
+      generation: 0,
+      genome,
+      x: point.x,
+      z: point.z,
+      heading: Math.atan2(-point.z, -point.x),
+      energy: this.config.energy.capacityPerSize * genome.get('size') * this.config.energy.initialShare,
+      capacityPerSize: this.config.energy.capacityPerSize,
+    });
+    if (!at) organism.heading = this.random.range(0, Math.PI * 2);
+    this._addOrganism(organism);
+    return organism;
+  }
+
+  /** Свободная точка у случайного края карты; при неудаче — любая свободная точка */
+  private _randomEdgePoint(radius: number): MutablePoint {
+    const inset = radius + 1;
+    for (let attempt = 0; attempt < FREE_POINT_ATTEMPTS; attempt++) {
+      const along = this.random.range(-1, 1);
+      const side = Math.floor(this.random.next() * 4);
+      const x = side < 2 ? (side === 0 ? -1 : 1) * (this.halfWidth - inset) : along * (this.halfWidth - inset);
+      const z = side < 2 ? along * (this.halfDepth - inset) : (side === 2 ? -1 : 1) * (this.halfDepth - inset);
+      if (!this.environment.isBlocked(x, z, radius)) return { x, z };
+    }
+    return this.randomFreePoint(radius);
   }
 
   private _addOrganism(organism: Organism): void {

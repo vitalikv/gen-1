@@ -3,14 +3,19 @@ import { downsampleHistory } from './history';
 import type { StatsSample } from './snapshot';
 
 function sample(time: number): StatsSample {
+  const genes = { speed: 1, perception: 1, size: 1, reproductionThreshold: 0.5, exploration: 0.5,
+    longevity: 1, hungerThreshold: 0.65, restThreshold: 0.15, matePriority: 0, memorySlots: 1, memorySpan: 1, caution: 0.6 };
   return {
     time,
     population: time * 2,
+    predators: 0,
     food: 0,
     births: 1,
     deaths: 2,
+    kills: 1,
     averageEnergyRatio: 0.5,
-    averageGenes: { speed: 1, perception: 1, size: 1, reproductionThreshold: 0.5, exploration: 0.5 },
+    averageGenes: genes,
+    averagePredatorGenes: { ...genes },
     season: 1,
     males: 0, females: 0, mature: 0, pregnancies: 0, biomass: 0, starving: 0,
   };
@@ -34,5 +39,6 @@ describe('downsampleHistory', () => {
     expect(result.at(-1)!.time).toBe(1000);
     expect(result.reduce((sum, item) => sum + item.births, 0)).toBe(1001);
     expect(result.reduce((sum, item) => sum + item.deaths, 0)).toBe(2002);
+    expect(result.reduce((sum, item) => sum + item.kills, 0)).toBe(1001);
   });
 });

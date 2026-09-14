@@ -52,6 +52,10 @@ const SECTIONS: Section[] = [
         get: (c) => c.population.initial, set: (c, v) => (c.population.initial = v),
       },
       {
+        kind: 'number', label: 'Стартовые хищники', restart: true, min: 0, max: 5000, step: 1,
+        get: (c) => c.population.initialPredators, set: (c, v) => (c.population.initialPredators = v),
+      },
+      {
         kind: 'number', label: 'Стартовая пища', restart: true, min: 0, max: 10000, step: 1,
         get: (c) => c.food.initial, set: (c, v) => (c.food.initial = v),
       },
@@ -83,6 +87,47 @@ const SECTIONS: Section[] = [
       {
         kind: 'number', label: 'Энергия пищи', restart: false, min: 0, max: 500, step: 1,
         get: (c) => c.food.energy, set: (c, v) => (c.food.energy = v),
+      },
+    ],
+  },
+  {
+    title: 'Хищники',
+    fields: [
+      {
+        kind: 'number', label: 'Вероятность поимки', restart: false, min: 0, max: 1, step: 0.05,
+        get: (c) => c.predation.catchChance, set: (c, v) => (c.predation.catchChance = v),
+      },
+      {
+        kind: 'number', label: 'Пауза между попытками, с', restart: false, min: 0, max: 60, step: 0.1,
+        get: (c) => c.predation.attackCooldown, set: (c, v) => (c.predation.attackCooldown = v),
+      },
+      {
+        kind: 'number', label: 'Ценность тела жертвы на размер', restart: false, min: 0, max: 1000, step: 1,
+        get: (c) => c.predation.bodyEnergyPerSize, set: (c, v) => (c.predation.bodyEnergyPerSize = v),
+      },
+      {
+        kind: 'number', label: 'Усвоение добычи', restart: false, min: 0, max: 1, step: 0.05,
+        get: (c) => c.predation.efficiency, set: (c, v) => (c.predation.efficiency = v),
+      },
+      {
+        kind: 'number', label: 'Желудок хищника (доля вместимости)', restart: false, min: 0.05, max: 2, step: 0.05,
+        get: (c) => c.predation.stomachShare, set: (c, v) => (c.predation.stomachShare = v),
+      },
+      {
+        kind: 'number', label: 'Радиус чутья', restart: false, min: 0, max: 500, step: 1,
+        get: (c) => c.predation.scentRadius, set: (c, v) => (c.predation.scentRadius = v),
+      },
+      {
+        kind: 'number', label: 'Радиус заботы о детёнышах', restart: false, min: 0, max: 100, step: 1,
+        get: (c) => c.predation.shareRadius, set: (c, v) => (c.predation.shareRadius = v),
+      },
+      {
+        kind: 'number', label: 'Бегство после потери из виду, с', restart: false, min: 0, max: 60, step: 0.5,
+        get: (c) => c.predation.fleeDuration, set: (c, v) => (c.predation.fleeDuration = v),
+      },
+      {
+        kind: 'number', label: 'Приток пары извне раз в, с (0 — нет)', restart: false, min: 0, max: 3600, step: 1,
+        get: (c) => c.predation.immigrationInterval, set: (c, v) => (c.predation.immigrationInterval = v),
       },
     ],
   },
@@ -132,8 +177,16 @@ const SECTIONS: Section[] = [
         get: (c) => c.resources.regrowthPerSecond, set: (c, v) => (c.resources.regrowthPerSecond = v),
       },
       {
-        kind: 'number', label: 'Память о пище, с', restart: false, min: 0, max: 3600, step: 1,
+        kind: 'number', label: 'Память о растении при длительности ×1, с', restart: false, min: 0, max: 3600, step: 1,
         get: (c) => c.perception.memoryDuration, set: (c, v) => (c.perception.memoryDuration = v),
+      },
+      {
+        kind: 'number', label: 'Расход на место памяти / с', restart: false, min: 0, max: 10, step: 0.01,
+        get: (c) => c.perception.memoryCost, set: (c, v) => (c.perception.memoryCost = v),
+      },
+      {
+        kind: 'number', label: 'Радиус брачного зова', restart: false, min: 0, max: 500, step: 1,
+        get: (c) => c.perception.mateCallRadius, set: (c, v) => (c.perception.mateCallRadius = v),
       },
       {
         kind: 'number', label: 'Вероятность мутации', restart: false, min: 0, max: 1, step: 0.01,
@@ -144,8 +197,12 @@ const SECTIONS: Section[] = [
         get: (c) => c.mutation.sigmaScale, set: (c, v) => (c.mutation.sigmaScale = v),
       },
       {
-        kind: 'number', label: 'Начало старения, с', restart: false, min: 1, max: 3600, step: 1,
+        kind: 'number', label: 'Начало старения при долголетии ×1, с', restart: false, min: 1, max: 3600, step: 1,
         get: (c) => c.lifecycle.maxAge, set: (c, v) => (c.lifecycle.maxAge = v),
+      },
+      {
+        kind: 'number', label: 'Цена долголетия (показатель)', restart: false, min: 0, max: 5, step: 0.1,
+        get: (c) => c.lifecycle.longevityCost, set: (c, v) => (c.lifecycle.longevityCost = v),
       },
       {
         kind: 'number', label: 'Предел популяции', restart: false, min: 1, max: 20000, step: 1,

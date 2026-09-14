@@ -6,6 +6,11 @@ export function isMature(world: World, organism: Organism): boolean {
   return organism.life.growth >= 1 - 1e-9 && organism.age >= world.config.lifecycle.minReproductionAge;
 }
 
+/** Возраст начала старения с учётом наследуемого долголетия */
+export function agingOnset(world: World, organism: Organism): number {
+  return world.config.lifecycle.maxAge * organism.genome.get('longevity');
+}
+
 export function isReady(world: World, organism: Organism): boolean {
   return organism.alive && isMature(world, organism) && organism.life.health >= 0.7
     && organism.life.stamina >= 0.35 && organism.life.recovery <= 0 && !organism.life.pregnancy
@@ -13,7 +18,7 @@ export function isReady(world: World, organism: Organism): boolean {
 }
 
 export function compatible(a: Organism, b: Organism): boolean {
-  if (a.id === b.id || a.sex === b.sex) return false;
+  if (a.id === b.id || a.sex === b.sex || a.life.diet !== b.life.diet) return false;
   const parentsA = [a.parentId, a.life.fatherId].filter((id): id is number => id !== null);
   const parentsB = [b.parentId, b.life.fatherId].filter((id): id is number => id !== null);
   return !parentsA.includes(b.id) && !parentsB.includes(a.id)

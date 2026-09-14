@@ -1,7 +1,7 @@
 import { SIMULATION_SPEED_OPTIONS } from '@/core/config';
-import { SEQUENTIAL_GRADIENT_CSS } from '@/rendering/colors';
+import { DIET_COLORS, SEQUENTIAL_GRADIENT_CSS, SEX_COLORS } from '@/rendering/colors';
 import { COLOR_MODE_OPTIONS, type ColorMode, type ViewSettings } from '@/rendering/ViewSettings';
-import { FOOD_STRIDE, type SimulationSnapshot } from '@/shared/snapshot';
+import { FOOD_STRIDE, ORGANISM_FIELD, ORGANISM_STRIDE, type SimulationSnapshot } from '@/shared/snapshot';
 import { GENE_DEFINITIONS } from '@/shared/genes';
 import type { SimulationBridge } from '@/worker/SimulationBridge';
 import { formatGene } from './format';
@@ -33,6 +33,7 @@ export class ControlPanel {
   private readonly _stepValue: HTMLElement;
   private readonly _timeValue: HTMLElement;
   private readonly _populationValue: HTMLElement;
+  private readonly _predatorsValue: HTMLElement;
   private readonly _foodValue: HTMLElement;
   private readonly _seasonValue: HTMLElement;
   private readonly _unsubscribers: (() => void)[] = [];
@@ -61,6 +62,7 @@ export class ControlPanel {
     this._stepValue = this._createStat(stats, 'Шаг');
     this._timeValue = this._createStat(stats, 'Время');
     this._populationValue = this._createStat(stats, 'Организмы');
+    this._predatorsValue = this._createStat(stats, 'Хищники');
     this._foodValue = this._createStat(stats, 'Пища');
     this._seasonValue = this._createStat(stats, 'Сезон');
 
@@ -134,6 +136,11 @@ export class ControlPanel {
       this._stepValue.textContent = String(snapshot.step);
       this._timeValue.textContent = `${snapshot.time.toFixed(1)} с`;
       this._populationValue.textContent = String(snapshot.organismIds.length);
+      let predators = 0;
+      for (let i = 0; i < snapshot.organismIds.length; i++) {
+        if (snapshot.organisms[i * ORGANISM_STRIDE + ORGANISM_FIELD.predator] === 1) predators++;
+      }
+      this._predatorsValue.textContent = String(predators);
       let available = 0;
       for (let i = 0; i < snapshot.food.length; i += FOOD_STRIDE) if (snapshot.food[i + 2]! > 0.04) available++;
       this._foodValue.textContent = String(available);
@@ -143,11 +150,16 @@ export class ControlPanel {
 
   private _renderLegend(): void {
     const mode = this._settings.state.colorMode;
+    const { herbivore, predator } = SEX_COLORS;
     this._legendGradient.style.background = mode === 'sex'
-      ? 'linear-gradient(90deg, #2879d0 50%, #c94e91 50%)' : SEQUENTIAL_GRADIENT_CSS;
+      ? `linear-gradient(90deg, ${herbivore.male} 25%, ${herbivore.female} 25% 50%, ${predator.male} 50% 75%, ${predator.female} 75%)`
+      : mode === 'diet' ? `linear-gradient(90deg, ${DIET_COLORS.herbivore} 50%, ${DIET_COLORS.predator} 50%)` : SEQUENTIAL_GRADIENT_CSS;
     if (mode === 'sex') {
-      this._legendMin.textContent = '♂ Самцы';
-      this._legendMax.textContent = '♀ Самки';
+      this._legendMin.textContent = '♂♀ травоядные';
+      this._legendMax.textContent = '♂♀ хищники';
+    } else if (mode === 'diet') {
+      this._legendMin.textContent = 'Травоядные';
+      this._legendMax.textContent = 'Хищники';
     } else if (mode === 'energy') {
       this._legendMin.textContent = '0%';
       this._legendMax.textContent = '100%';

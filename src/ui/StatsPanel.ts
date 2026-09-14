@@ -1,6 +1,7 @@
 import type { ViewSettings } from '@/rendering/ViewSettings';
 import { GENE_DEFINITIONS, GENE_NAMES, type GeneName } from '@/shared/genes';
-import { ORGANISM_STRIDE, organismGeneField, type SimulationSnapshot, type StatsSample } from '@/shared/snapshot';
+import { DIET_COLORS } from '@/rendering/colors';
+import { ORGANISM_FIELD, ORGANISM_STRIDE, organismGeneField, type SimulationSnapshot, type StatsSample } from '@/shared/snapshot';
 import { CHART_THEME } from './charts/chartTheme';
 import { Histogram } from './charts/Histogram';
 import { LineChart, type LineSeries } from './charts/LineChart';
@@ -23,6 +24,7 @@ export class StatsPanel {
   private readonly _geneSelect: HTMLSelectElement;
   private readonly _populationChart: LineChart;
   private readonly _foodChart: LineChart;
+  private readonly _dietChart: LineChart;
   private readonly _sexChart: LineChart;
   private readonly _reproductionChart: LineChart;
   private readonly _biomassChart: LineChart;
@@ -63,6 +65,7 @@ export class StatsPanel {
 
     this._populationChart = new LineChart({ title: 'Численность', format: formatCount });
     this._foodChart = new LineChart({ title: 'Пища на карте', format: formatCount });
+    this._dietChart = new LineChart({ title: 'Травоядные и хищники', format: formatCount });
     this._sexChart = new LineChart({ title: 'Самцы и самки', format: formatCount });
     this._reproductionChart = new LineChart({ title: 'Взрослые и беременности', format: formatCount });
     this._biomassChart = new LineChart({ title: 'Запас растительной пищи', format: formatCount });
@@ -86,6 +89,7 @@ export class StatsPanel {
     this._root.append(
       header,
       this._populationChart.element,
+      this._dietChart.element,
       this._sexChart.element,
       this._reproductionChart.element,
       this._biomassChart.element,
@@ -132,6 +136,7 @@ export class StatsPanel {
     this._unsubscribers.forEach((unsubscribe) => unsubscribe());
     for (const chart of [
       this._populationChart,
+      this._dietChart,
       this._sexChart,
       this._reproductionChart,
       this._biomassChart,
@@ -169,6 +174,10 @@ export class StatsPanel {
     const times = history.map((sample) => sample.time);
 
     this._populationChart.setData(this._compared((sample) => sample.population));
+    this._dietChart.setData([
+      { label: 'Травоядные', color: DIET_COLORS.herbivore, times, values: history.map((sample) => sample.population - sample.predators) },
+      { label: 'Хищники', color: DIET_COLORS.predator, times, values: history.map((sample) => sample.predators) },
+    ]);
     this._sexChart.setData([
       { label: 'Самцы', color: '#2879d0', times, values: history.map((sample) => sample.males) },
       { label: 'Самки', color: '#c94e91', times, values: history.map((sample) => sample.females) },
@@ -183,6 +192,7 @@ export class StatsPanel {
     this._birthsChart.setData([
       { label: 'Рождения', color: CHART_THEME.series[0], times, values: history.map((sample) => sample.births) },
       { label: 'Смерти', color: CHART_THEME.series[1], times, values: history.map((sample) => sample.deaths) },
+      { label: 'Из них пойманы', color: DIET_COLORS.predator, times, values: history.map((sample) => sample.kills) },
     ]);
 
     this._seasonChart.element.hidden = !this._seasonEnabled;
@@ -200,14 +210,26 @@ export class StatsPanel {
     const { label, min, max } = GENE_DEFINITIONS[gene];
     this._geneMeanChart.setTitle(`Среднее: ${label.toLowerCase()}`);
     this._geneMeanChart.setOptions({ yMin: min, yMax: max, format: (value) => formatGene(gene, value) });
-    this._geneHistogram.setTitle(`Распределение: ${label.toLowerCase()}`);
+    this._geneHistogram.setTitle(`Распределение у травоядных: ${label.toLowerCase()}`);
     this._updateGeneMean();
     this._updateHistogram();
   }
 
+  /** Средние травоядных текущего и сравниваемых запусков; хищники текущего запуска — отдельной линией */
   private _updateGeneMean(): void {
     const gene = this._settings.state.chartGene;
-    this._geneMeanChart.setData(this._compared((sample) => sample.averageGenes[gene]));
+    const series = this._compared((sample) => sample.averageGenes[gene]);
+    series[0]!.label = 'Травоядные';
+    if (this._history.some((sample) => sample.predators > 0)) {
+      series.push({
+        label: 'Хищники',
+        color: DIET_COLORS.predator,
+        // Без хищников среднего нет: такие точки пропускаются.
+        times: this._history.filter((sample) => sample.predators > 0).map((sample) => sample.time),
+        values: this._history.filter((sample) => sample.predators > 0).map((sample) => sample.averagePredatorGenes[gene]),
+      });
+    }
+    this._geneMeanChart.setData(series);
   }
 
   private _updateHistogram(): void {
@@ -217,10 +239,12 @@ export class StatsPanel {
     }
     const gene = this._settings.state.chartGene;
     const field = organismGeneField(gene);
-    const values = new Float32Array(snapshot.organismIds.length);
-    for (let i = 0; i < values.length; i++) {
-      values[i] = snapshot.organisms[i * ORGANISM_STRIDE + field]!;
+    const herbivores: number[] = [];
+    for (let i = 0; i < snapshot.organismIds.length; i++) {
+      const offset = i * ORGANISM_STRIDE;
+      if (snapshot.organisms[offset + ORGANISM_FIELD.predator] === 0) herbivores.push(snapshot.organisms[offset + field]!);
     }
+    const values = Float32Array.from(herbivores);
     const { min, max } = GENE_DEFINITIONS[gene];
     this._geneHistogram.setData(values, min, max, HISTOGRAM_BINS, (value) => formatGene(gene, value));
   }

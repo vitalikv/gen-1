@@ -166,7 +166,8 @@ describe('SimulationEngine', () => {
 
   it('популяция живет, размножается и эволюционирует в допустимых диапазонах', () => {
     const engine = createEngine('life', createTestConfig({ seed: 7, dt: 1 / 30 }));
-    engine.advance(30 * 60);
+    // За первые 60 с смерти случаются не при каждом seed: стартовые особи ещё не стареют.
+    engine.advance(30 * 120);
 
     const { world } = engine;
     expect(world.birthsTotal).toBeGreaterThan(0);

@@ -1,10 +1,11 @@
 import { GENE_DEFINITIONS, GENE_NAMES, type GeneName } from '@/shared/genes';
 
 /** Признак, которым окрашиваются организмы */
-export type ColorMode = 'energy' | 'sex' | GeneName;
+export type ColorMode = 'energy' | 'sex' | 'diet' | GeneName;
 
 export const COLOR_MODE_OPTIONS: readonly { value: ColorMode; label: string }[] = [
-  { value: 'sex', label: 'Пол' },
+  { value: 'sex', label: 'Пол и вид' },
+  { value: 'diet', label: 'Вид' },
   { value: 'energy', label: 'Энергия' },
   ...GENE_NAMES.map((name) => ({ value: name, label: GENE_DEFINITIONS[name].label })),
 ];

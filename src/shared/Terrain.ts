@@ -82,6 +82,18 @@ export class Terrain {
     return false;
   }
 
+  /** Пересекает ли отрезок воду; проверка по центрам шагов размером с ячейку без учёта радиуса тела */
+  public crossesWater(a: { x: number; z: number }, b: { x: number; z: number }): boolean {
+    if (!this.enabled) return false;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / Math.min(this.cellWidth, this.cellDepth)));
+    for (let step = 0; step <= steps; step++) {
+      if (this.kindAt(a.x + dx * step / steps, a.z + dz * step / steps) === 'water') return true;
+    }
+    return false;
+  }
+
   /** Sweep the entire movement so large steps cannot jump across a river. */
   public stopAtShore(start: { x: number; z: number }, end: { x: number; z: number }, radius: number,
     normal: { x: number; z: number }): boolean {

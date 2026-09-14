@@ -20,12 +20,12 @@ export class Genome {
     this._values = clamped;
   }
 
-  /** Геном стартовой популяции: разброс вокруг initial с масштабом sigma */
-  public static createInitial(random: SeededRandom): Genome {
+  /** Геном стартовой популяции: разброс вокруг initial (или means) с масштабом sigma */
+  public static createInitial(random: SeededRandom, means: Readonly<Partial<GeneValues>> = {}): Genome {
     const values = {} as GeneValues;
     for (const name of GENE_NAMES) {
       const { initial, sigma } = GENE_DEFINITIONS[name];
-      values[name] = random.normal(initial, sigma);
+      values[name] = random.normal(means[name] ?? initial, sigma);
     }
     return new Genome(values);
   }

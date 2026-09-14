@@ -14,11 +14,13 @@ import {
   type SimulationSnapshot,
   type StatsSample,
 } from '@/shared/snapshot';
+import { rememberFood } from './FoodMemory';
 import { StatisticsCollector } from './StatisticsCollector';
 import { BehaviorSystem } from './systems/BehaviorSystem';
 import { EnergySystem } from './systems/EnergySystem';
-import { EvolutionSystem, isMature } from './systems/EvolutionSystem';
+import { agingOnset, EvolutionSystem, isMature } from './systems/EvolutionSystem';
 import { FoodSystem } from './systems/FoodSystem';
+import { PredationSystem } from './systems/PredationSystem';
 import { validateConfig } from './validateConfig';
 import { World } from './World';
 import type { Food } from './World';
@@ -51,6 +53,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
   private readonly _behaviorSystem = new BehaviorSystem();
   private readonly _energySystem = new EnergySystem();
   private readonly _evolutionSystem = new EvolutionSystem();
+  private readonly _predationSystem = new PredationSystem();
 
   public get isInitialized(): boolean {
     return this._world !== null;
@@ -248,6 +251,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       organismData[offset + ORGANISM_FIELD.sex] = organism.sex === 'male' ? 0 : 1;
       organismData[offset + ORGANISM_FIELD.bodySize] = organism.bodySize;
       organismData[offset + ORGANISM_FIELD.pregnant] = organism.life.pregnancy ? 1 : 0;
+      organismData[offset + ORGANISM_FIELD.predator] = organism.isPredator ? 1 : 0;
       for (let g = 0; g < GENE_NAMES.length; g++) {
         organismData[offset + GENE_FIELDS[g]!] = organism.genome.get(GENE_NAMES[g]!);
       }
@@ -283,6 +287,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
       parentId: organism.parentId,
       generation: organism.generation,
       age: organism.age,
+      agingOnset: agingOnset(this._requireWorld(), organism),
       energy: organism.energy,
       capacity: organism.capacity,
       action: organism.action,
@@ -297,6 +302,7 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     const world = this._requireWorld();
     const { dt } = world.config;
 
+    world.updateImmigration(dt);
     this._foodSystem.spawn(world, dt, this._step * dt);
     this._foodSystem.rebuildIndex(world);
     world.rebuildOrganismIndex();
@@ -313,21 +319,26 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     }
     // При одновременном доступе очередь разыгрывается заново воспроизводимым PRNG.
     for (const [food, contenders] of claims) {
-      for (let i = contenders.length - 1; i > 0; i--) {
-        const j = Math.floor(world.random.next() * (i + 1));
-        [contenders[i], contenders[j]] = [contenders[j]!, contenders[i]!];
+      this._shuffle(world, contenders);
+      for (const organism of contenders) {
+        this._energySystem.eat(organism, food, world.config.physiology.stomachCapacityShare);
+        rememberFood(world, organism, food);
       }
-      for (const organism of contenders) this._energySystem.eat(organism, food, world.config.physiology.stomachCapacityShare);
     }
+    // Несколько хищников у одной жертвы пробуют поймать её в воспроизводимом случайном порядке.
+    const hunts: { predator: Organism; prey: Organism }[] = [];
+    intents.forEach((intent, i) => {
+      if (intent.prey) hunts.push({ predator: world.organisms[i]!, prey: intent.prey });
+    });
+    this._shuffle(world, hunts);
+    for (const { predator, prey } of hunts) this._predationSystem.tryCatch(world, predator, prey);
     for (const organism of world.organisms) {
+      if (!organism.alive) continue;
       this._energySystem.update(world, organism, dt);
       this._evolutionSystem.tryReproduce(world, organism);
     }
     const matingOrder = world.organisms.filter((organism) => organism.life.mateId !== null);
-    for (let i = matingOrder.length - 1; i > 0; i--) {
-      const j = Math.floor(world.random.next() * (i + 1));
-      [matingOrder[i], matingOrder[j]] = [matingOrder[j]!, matingOrder[i]!];
-    }
+    this._shuffle(world, matingOrder);
     for (const organism of matingOrder) {
       const mate = world.getOrganism(organism.life.mateId!);
       if (mate && mate.action === 'seekingMate') this._evolutionSystem.tryMate(world, organism, mate);
@@ -336,6 +347,14 @@ export class SimulationEngine extends ContextSingleton<SimulationEngine> {
     world.commitStep();
     this._step++;
     this._statistics!.record(world, this._step, this.time);
+  }
+
+  /** Перемешивание Фишера — Йетса генератором мира */
+  private _shuffle<T>(world: World, items: T[]): void {
+    for (let i = items.length - 1; i > 0; i--) {
+      const j = Math.floor(world.random.next() * (i + 1));
+      [items[i], items[j]] = [items[j]!, items[i]!];
+    }
   }
 
   private _createStatistics(config: SimulationConfig): StatisticsCollector {

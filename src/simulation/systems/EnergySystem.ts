@@ -1,13 +1,24 @@
-﻿import type { Organism } from '../Organism';
+﻿import { memoryCapacity } from '../FoodMemory';
+import type { Organism } from '../Organism';
 import type { Food, World } from '../World';
+import { agingOnset } from './EvolutionSystem';
 
 /** Пища усваивается постепенно; голод повреждает здоровье. */
 export class EnergySystem {
-  public eat(organism: Organism, food: Food, stomachCapacityShare = 0.5): void {
+  /**
+   * Помещает в желудок сколько поместится из available
+   * @returns съеденное количество
+   */
+  public static swallow(organism: Organism, available: number, stomachCapacityShare: number): number {
     const space = Math.max(0, organism.capacity * stomachCapacityShare - organism.life.stomach);
-    const amount = Math.min(space, food.energy);
+    const amount = Math.min(space, available);
+    if (amount > 0) organism.life.stomach += amount;
+    return Math.max(0, amount);
+  }
+
+  public eat(organism: Organism, food: Food, stomachCapacityShare = 0.5): void {
+    const amount = EnergySystem.swallow(organism, food.energy, stomachCapacityShare);
     if (amount <= 0) return;
-    organism.life.stomach += amount;
     food.energy -= amount;
     food.eaten = food.energy < 0.01;
     organism.action = 'eating';
@@ -17,14 +28,17 @@ export class EnergySystem {
   public static costPerSecond(world: World, organism: Organism): number {
     const { baseCost, moveCost, visionCost } = world.config.energy;
     const size = organism.bodySize;
-    return baseCost * size + moveCost * size * organism.currentSpeed ** 2
-      + visionCost * organism.genome.get('perception')
+    // Долголетие оплачивается постоянным расходом на поддержание тела.
+    const maintenance = organism.genome.get('longevity') ** world.config.lifecycle.longevityCost;
+    const memory = world.config.perception.memoryCost * memoryCapacity(organism) * organism.genome.get('memorySpan');
+    return baseCost * size * maintenance + moveCost * size * organism.currentSpeed ** 2
+      + visionCost * organism.genome.get('perception') + memory
       + (organism.life.pregnancy ? world.config.reproduction.pregnancyCostPerSize * size : 0);
   }
 
   public update(world: World, organism: Organism, dt: number): void {
     const { life } = organism;
-    const { physiology, lifecycle } = world.config;
+    const { physiology } = world.config;
     const digested = Math.min(life.stomach, physiology.digestionPerSecond * organism.bodySize * dt,
       Math.max(0, organism.capacity - organism.energy));
     life.stomach -= digested;
@@ -52,12 +66,14 @@ export class EnergySystem {
       organism.energy -= healing * 10;
     }
     life.recovery = Math.max(0, life.recovery - dt);
+    life.attackCooldown = Math.max(0, life.attackCooldown - dt);
     organism.age += dt;
     if (life.health <= 0) {
       organism.alive = false;
       life.deathCause = 'starvation';
-    } else if (organism.age > lifecycle.maxAge) {
-      const hazard = (organism.age - lifecycle.maxAge) / Math.max(1, lifecycle.maxAge * 0.2) ** 2;
+    } else if (organism.age > agingOnset(world, organism)) {
+      const onset = agingOnset(world, organism);
+      const hazard = (organism.age - onset) / Math.max(1, onset * 0.2) ** 2;
       if (world.random.next() < 1 - Math.exp(-hazard * dt)) {
         organism.alive = false;
         life.deathCause = 'age';

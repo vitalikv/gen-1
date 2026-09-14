@@ -9,7 +9,7 @@ import {
   type SimulationSnapshot,
 } from '@/shared/snapshot';
 import type { WorldPoint } from './CameraController';
-import { FOOD_COLOR, PERCEPTION_COLOR, SELECTION_COLOR, sequentialColor } from './colors';
+import { DIET_COLORS, FOOD_COLOR, PERCEPTION_COLOR, SELECTION_COLOR, SEX_COLORS, sequentialColor } from './colors';
 import type { ColorMode, ViewSettings } from './ViewSettings';
 
 const LAYER_Y = { food: 0.02, perception: 0.03, organisms: 0.05, selection: 0.06 } as const;
@@ -288,13 +288,20 @@ export class WorldRenderer {
 
   private _updateColors(snapshot: SimulationSnapshot): void {
     const mode: ColorMode = this._settings.state.colorMode;
-    const field = mode === 'energy' ? ORGANISM_FIELD.energyRatio : mode === 'sex' ? ORGANISM_FIELD.sex : organismGeneField(mode);
     const colors = this._organismMesh.instanceColor!.array as Float32Array;
 
     for (let i = 0; i < snapshot.organismIds.length; i++) {
-      const value = snapshot.organisms[i * ORGANISM_STRIDE + field]!;
-      if (mode === 'sex') this._color.set(value === 0 ? '#2879d0' : '#c94e91');
-      else sequentialColor(mode === 'energy' ? value : normalizeGene(mode, value), this._color);
+      const offset = i * ORGANISM_STRIDE;
+      const diet = snapshot.organisms[offset + ORGANISM_FIELD.predator] === 1 ? 'predator' : 'herbivore';
+      if (mode === 'sex') {
+        this._color.set(SEX_COLORS[diet][snapshot.organisms[offset + ORGANISM_FIELD.sex] === 0 ? 'male' : 'female']);
+      } else if (mode === 'diet') {
+        this._color.set(DIET_COLORS[diet]);
+      } else if (mode === 'energy') {
+        sequentialColor(snapshot.organisms[offset + ORGANISM_FIELD.energyRatio]!, this._color);
+      } else {
+        sequentialColor(normalizeGene(mode, snapshot.organisms[offset + organismGeneField(mode)]!), this._color);
+      }
       colors[i * 3] = this._color.r;
       colors[i * 3 + 1] = this._color.g;
       colors[i * 3 + 2] = this._color.b;

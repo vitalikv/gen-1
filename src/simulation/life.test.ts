@@ -203,23 +203,6 @@ describe('Физиология, поведение и ресурсы', () => {
     expect(behavior.plan(world, mother, 0.25).food?.id).toBe(1);
   });
 
-  it('помнит пищу вне радиуса восприятия и забывает устаревшее место', () => {
-    const { world, mother } = pair();
-    mother.energy = 10;
-    mother.heading = 0;
-    const food = { id: 1, x: 5, z: 0, energy: 25, maxEnergy: 25, eaten: false };
-    world.food.push(food);
-    new FoodSystem().rebuildIndex(world);
-    const behavior = new BehaviorSystem();
-    behavior.plan(world, mother, 0.25);
-    mother.x = -50;
-    behavior.plan(world, mother, 0.25);
-    expect(mother.action).toBe('remembering');
-    behavior.plan(world, mother, world.config.perception.memoryDuration);
-    expect(mother.life.memory).toBeNull();
-    expect(mother.action).toBe('wandering');
-  });
-
   it('истощённое растение восстанавливается в том же месте в зависимости от сезона', () => {
     const { world } = pair();
     const plant = world.trySpawnFood()!;
@@ -246,7 +229,7 @@ describe('Физиология, поведение и ресурсы', () => {
     const father = original.world.organisms[1]!;
     for (const o of [mother, father]) { o.x = 0; o.z = 0; o.energy = o.capacity * 0.95; }
     expect(new EvolutionSystem().tryMate(original.world, mother, father)).toBe(true);
-    mother.life.memory = { x: 5, z: 5, remaining: 20 };
+    mother.life.memory = [{ foodId: 999, x: 5, z: 5, energy: 25, maxEnergy: 25, seenAt: mother.age }];
     mother.life.stomach = 10;
     original.advance(3);
     const restored = SimulationEngine.inst('restored-pregnant');

@@ -1,10 +1,21 @@
 import { FOOD_RADIUS } from '@/shared/config';
+import { REST_RECOVERY_MARGIN } from '@/shared/genes';
 import type { MutablePoint } from '../Environment';
+import {
+  chooseRemembered, estimateFood, forgetStale, isRemembered, memoryCapacity, rememberFood, REMEMBERED_FOOD_MIN_SHARE,
+} from '../FoodMemory';
 import type { Organism } from '../Organism';
 import type { Food, World } from '../World';
-import { compatible, isReady } from './EvolutionSystem';
+import { agingOnset, compatible, isReady } from './EvolutionSystem';
+import { PredationSystem } from './PredationSystem';
 
-export interface BehaviorIntent { distance: number; reflect: boolean; food: Food | null; }
+export interface BehaviorIntent {
+  distance: number;
+  reflect: boolean;
+  food: Food | null;
+  /** Жертва, которую хищник попытается схватить после движения */
+  prey: Organism | null;
+}
 
 const TWO_PI = Math.PI * 2;
 /** Сколько секунд организм обходит препятствие, прежде чем снова идти к пище */
@@ -36,29 +47,25 @@ export class BehaviorSystem {
   /** Все организмы планируют действия до перемещения и расходования общих ресурсов. */
   public plan(world: World, organism: Organism, dt: number): BehaviorIntent {
     const { life, genome } = organism;
-    const idle: BehaviorIntent = { distance: 0, reflect: false, food: null };
+    const idle: BehaviorIntent = { distance: 0, reflect: false, food: null, prey: null };
     life.mateId = null;
-    if (life.memory) {
-      life.memory.remaining -= dt;
-      if (life.memory.remaining <= 0) life.memory = null;
-    }
-    const ageFactor = Math.max(0.45, 1 - Math.max(0, organism.age / Math.max(1, world.config.lifecycle.maxAge) - 1) * 0.4);
+    forgetStale(world, organism);
+    const ageFactor = Math.max(0.45, 1 - Math.max(0, organism.age / Math.max(1, agingOnset(world, organism)) - 1) * 0.4);
     const speed = genome.get('speed') * Math.sqrt(life.growth) * (0.35 + 0.65 * life.stamina)
       * (0.5 + 0.5 * life.health) * ageFactor;
-    const hungry = organism.energyRatio < 0.65 && life.stomach < organism.capacity * 0.2;
-    const exhausted = life.stamina < 0.15 || (organism.action === 'resting' && life.stamina < 0.7);
-    if (exhausted || (!hungry && !isReady(world, organism))) {
-      organism.action = 'resting';
-      life.reason = exhausted ? 'Восстанавливает выносливость' : life.stomach > 0
-        ? 'Переваривает пищу и экономит энергию' : 'Сыт; восстанавливается';
-      return idle;
-    }
-    if (organism.avoidTimer > 0) {
-      organism.avoidTimer = Math.max(0, organism.avoidTimer - dt);
-      organism.action = 'avoiding';
-      life.reason = 'Обходит препятствие';
-      return { distance: speed * dt, reflect: true, food: null };
-    }
+    const hungerThreshold = genome.get('hungerThreshold');
+    const restThreshold = genome.get('restThreshold');
+    const ownHunger = organism.energyRatio < hungerThreshold && life.stomach < organism.capacity * 0.2;
+    // Взрослый хищник охотится и сытым, пока рядом голодны его детёныши.
+    const provisioning = !ownHunger && organism.isPredator && life.growth >= 1 && world.organismIndex.findNearest(
+      organism.x, organism.z, world.config.predation.shareRadius, (young) => PredationSystem.isDependentYoung(organism, young)
+        && young.energyRatio < young.genome.get('hungerThreshold') && young.life.stomach < young.capacity * 0.2) !== null;
+    const hungry = ownHunger || provisioning;
+    const exhausted = life.stamina < restThreshold
+      || (organism.action === 'resting' && life.stamina < restThreshold + REST_RECOVERY_MARGIN);
+    const ready = isReady(world, organism);
+    // При нулевом приоритете голодный организм всегда выбирает пищу.
+    const mateFirst = ready && (!hungry || organism.energyRatio >= hungerThreshold * (1 - genome.get('matePriority')));
     const visible = (point: MutablePoint): boolean => {
       const dx = point.x - organism.x;
       const dz = point.z - organism.z;
@@ -67,22 +74,90 @@ export class BehaviorSystem {
         || Math.abs(normalizeAngle(Math.atan2(dz, dx) - organism.heading)) <= world.config.perception.fieldOfView / 2)
         && world.environment.hasLineOfSight(organism, point);
     };
-    const toward = (point: MutablePoint, reach: number, food: Food | null): BehaviorIntent => {
+    const toward = (point: MutablePoint, reach: number, food: Food | null, prey: Organism | null = null): BehaviorIntent => {
       const distance = Math.hypot(point.x - organism.x, point.z - organism.z);
       if (distance > reach) organism.heading = Math.atan2(point.z - organism.z, point.x - organism.x);
-      return { distance: Math.min(speed * dt, Math.max(0, distance - reach)), reflect: false, food };
+      return { distance: Math.min(speed * dt, Math.max(0, distance - reach)), reflect: false, food, prey };
     };
-    if (isReady(world, organism) && !hungry) {
-      const mate = world.organismIndex.findNearest(organism.x, organism.z, genome.get('perception'),
+
+    if (!organism.isPredator && this._updateThreat(world, organism, dt, visible) && organism.avoidTimer <= 0) {
+      const awayX = organism.x - life.threat!.x;
+      const awayZ = organism.z - life.threat!.z;
+      if (awayX !== 0 || awayZ !== 0) organism.heading = Math.atan2(awayZ, awayX);
+      organism.action = 'fleeing';
+      life.targetFoodId = null;
+      life.reason = 'Убегает от замеченного хищника';
+      return { distance: speed * dt, reflect: true, food: null, prey: null };
+    }
+    if (!life.threat && (exhausted || (!hungry && !ready))) {
+      organism.action = 'resting';
+      life.reason = exhausted ? 'Восстанавливает выносливость' : life.stomach > 0
+        ? 'Переваривает пищу и экономит энергию' : 'Сыт; восстанавливается';
+      return idle;
+    }
+    if (organism.avoidTimer > 0) {
+      organism.avoidTimer = Math.max(0, organism.avoidTimer - dt);
+      organism.action = 'avoiding';
+      life.reason = life.threat ? 'Убегает от хищника в обход препятствия' : 'Обходит препятствие';
+      return { distance: speed * dt, reflect: true, food: null, prey: null };
+    }
+    if (!hungry && !organism.isPredator && memoryCapacity(organism) > 0) {
+      // Сытый организм замечает богатое растение, чтобы вернуться к нему, когда проголодается.
+      const noticed = world.foodIndex.findNearest(organism.x, organism.z, genome.get('perception'),
+        (food) => food.energy >= food.maxEnergy * REMEMBERED_FOOD_MIN_SHARE && !isRemembered(organism, food) && visible(food));
+      if (noticed) rememberFood(world, organism, noticed);
+    }
+    if (mateFirst) {
+      const visibleMate = world.organismIndex.findNearest(organism.x, organism.z, genome.get('perception'),
         (other) => compatible(organism, other) && isReady(world, other) && visible(other));
+      // Без видимого партнёра особь идёт на зов: иначе редкий вид не находит пар.
+      const mate = visibleMate ?? world.organismIndex.findNearest(organism.x, organism.z,
+        world.config.perception.mateCallRadius, (other) => compatible(organism, other) && isReady(world, other)
+          && world.environment.hasClearPath(organism, other));
       if (mate) {
         life.mateId = mate.id;
         organism.action = 'seekingMate';
-        life.reason = 'Идёт к готовому партнёру противоположного пола';
+        life.reason = hungry ? 'Голоден, но партнёр важнее пищи'
+          : visibleMate ? 'Идёт к готовому партнёру противоположного пола' : 'Идёт на брачный зов партнёра';
         return toward(mate, organism.bodySize + mate.bodySize, null);
       }
     }
-    if (hungry) {
+    const parent = organism.isPredator && life.growth < 1 ? this._livingParent(world, organism) : null;
+    if (hungry && parent) {
+      // Детёныш не догонит жертву сам: держится рядом с родителем и ждёт долю добычи.
+      const { shareRadius } = world.config.predation;
+      organism.action = 'following';
+      if (Math.hypot(parent.x - organism.x, parent.z - organism.z) > shareRadius / 2) {
+        life.reason = 'Голоден; догоняет родителя';
+        return toward(parent, shareRadius / 2, null);
+      }
+      life.reason = 'Голоден; ждёт добычу родителя';
+      return idle;
+    }
+    if (hungry && organism.isPredator) {
+      const motive = provisioning ? 'Детёныши голодны' : 'Голоден';
+      // Жертва за водой видна, но недосягаема: погоня к ней упёрлась бы в берег.
+      const reachable = (other: Organism) => !other.isPredator && other.alive && !world.environment.terrain.crossesWater(organism, other);
+      const retained = life.targetPreyId === null ? null : world.getOrganism(life.targetPreyId);
+      const prey = retained && reachable(retained) && visible(retained) ? retained
+        : world.organismIndex.findNearest(organism.x, organism.z, genome.get('perception'),
+          (other) => reachable(other) && visible(other));
+      if (prey) {
+        life.targetPreyId = prey.id;
+        organism.action = 'hunting';
+        life.reason = life.attackCooldown > 0 ? 'Преследует жертву после неудачной попытки' : `${motive}; преследует травоядное`;
+        return toward(prey, organism.bodySize + prey.bodySize, null, prey);
+      }
+      life.targetPreyId = null;
+      // Добыча редко оказывается в поле зрения случайно: хищник идёт по следу, не видя жертву.
+      const scented = world.organismIndex.findNearest(organism.x, organism.z, world.config.predation.scentRadius,
+        (other) => reachable(other) && world.environment.hasLineOfSight(organism, other));
+      if (scented) {
+        organism.action = 'hunting';
+        life.reason = `${motive}; идёт по следу травоядного`;
+        return toward(scented, organism.bodySize + scented.bodySize, null);
+      }
+    } else if (hungry) {
       let retained: Food | null = null;
       world.foodIndex.forEachInRadius(organism.x, organism.z, genome.get('perception'), (food) => {
         if (food.id === life.targetFoodId && !food.eaten && visible(food)) retained = food;
@@ -91,27 +166,58 @@ export class BehaviorSystem {
         (food) => !food.eaten && visible(food));
       if (target) {
         life.targetFoodId = target.id;
-        life.memory = { x: target.x, z: target.z, remaining: world.config.perception.memoryDuration };
+        rememberFood(world, organism, target);
         organism.action = 'seeking';
         life.reason = 'Голоден; идёт к видимой пище';
         return toward(target, organism.bodySize + FOOD_RADIUS, target);
       }
       life.targetFoodId = null;
-      if (life.memory) {
-        if (Math.hypot(life.memory.x - organism.x, life.memory.z - organism.z) > organism.bodySize + FOOD_RADIUS) {
-          organism.action = 'remembering';
-          life.reason = 'Проверяет запомненный кормовой участок';
-          return toward(life.memory, organism.bodySize, null);
-        }
-        life.memory = null;
+      let remembered = chooseRemembered(world, organism);
+      while (remembered && Math.hypot(remembered.x - organism.x, remembered.z - organism.z) <= organism.bodySize + FOOD_RADIUS) {
+        // На месте нет доступной пищи: растение съедено или ещё не отросло.
+        remembered.energy = 0;
+        remembered.seenAt = organism.age;
+        remembered = chooseRemembered(world, organism);
+      }
+      if (remembered) {
+        organism.action = 'remembering';
+        life.reason = `Возвращается к запомненному растению: ожидает ~${Math.round(estimateFood(world, organism, remembered))} энергии`;
+        return toward(remembered, organism.bodySize, null);
       }
     }
     organism.action = 'wandering';
-    life.reason = hungry ? 'Ищет новый источник пищи' : 'Исследует мир в поисках партнёра';
+    life.reason = !hungry ? 'Исследует мир в поисках партнёра'
+      : organism.isPredator ? 'Ищет добычу' : 'Ищет новый источник пищи';
     const exploration = genome.get('exploration');
     const { turnRate, minWanderSpeedShare } = world.config.behavior;
     organism.heading = normalizeAngle(organism.heading + world.random.normal(0, turnRate * Math.sqrt(dt) * (1 - 0.8 * exploration)));
-    return { distance: speed * Math.max(exploration, minWanderSpeedShare) * dt, reflect: true, food: null };
+    return { distance: speed * Math.max(exploration, minWanderSpeedShare) * dt, reflect: true, food: null, prey: null };
+  }
+
+  /** Живая мать или, если её нет, живой отец */
+  private _livingParent(world: World, organism: Organism): Organism | null {
+    for (const id of [organism.parentId, organism.life.fatherId]) {
+      const parent = id === null ? null : world.getOrganism(id);
+      if (parent?.alive) return parent;
+    }
+    return null;
+  }
+
+  /**
+   * Замечает ближайшего видимого хищника в радиусе perception * caution и обновляет место угрозы
+   * @returns есть ли угроза, от которой травоядное ещё убегает
+   */
+  private _updateThreat(world: World, organism: Organism, dt: number, visible: (point: MutablePoint) => boolean): boolean {
+    const { life, genome } = organism;
+    if (life.threat) {
+      life.threat.remaining -= dt;
+      if (life.threat.remaining <= 0) life.threat = null;
+    }
+    const radius = genome.get('perception') * genome.get('caution');
+    const predator = radius > 0 ? world.organismIndex.findNearest(organism.x, organism.z, radius,
+      (other) => other.isPredator && other.alive && visible(other)) : null;
+    if (predator) life.threat = { x: predator.x, z: predator.z, remaining: world.config.predation.fleeDuration };
+    return life.threat !== null;
   }
 
   public execute(world: World, organism: Organism, intent: BehaviorIntent, dt: number): Food | null {

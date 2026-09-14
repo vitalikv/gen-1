@@ -1,4 +1,4 @@
-import { GENE_DEFINITIONS, GENE_NAMES, normalizeGene } from '@/shared/genes';
+import { GENE_DEFINITIONS, GENE_NAMES, memorySlotCount, normalizeGene } from '@/shared/genes';
 import type { OrganismDetails } from '@/shared/snapshot';
 import { ACTION_LABELS, formatGene } from './format';
 
@@ -60,6 +60,7 @@ export class InspectorPanel {
       list.append(term, description);
     };
 
+    add('Вид', details.life.diet === 'predator' ? 'Хищник' : 'Травоядное');
     add('Пол', details.life.sex === 'male' ? 'Мужской ♂' : 'Женский ♀');
     add('Мать', details.parentId === null ? '—' : `#${details.parentId}`);
     add('Отец', details.life.fatherId === null ? '—' : `#${details.life.fatherId}`);
@@ -73,7 +74,14 @@ export class InspectorPanel {
       ? `${details.life.pregnancy.remaining.toFixed(1)} с` : 'Ожидание места в популяции');
     add('Поколение', String(details.generation));
     add('Возраст', `${details.age.toFixed(1)} с`);
+    add('Старение с', `${details.agingOnset.toFixed(0)} с${details.age > details.agingOnset ? ' — стареет' : ''}`);
     add('Энергия', `${details.energy.toFixed(0)} / ${details.capacity.toFixed(0)}`);
+    if (details.life.diet === 'predator') {
+      add('Следующая попытка поимки', details.life.attackCooldown > 0 ? `через ${details.life.attackCooldown.toFixed(1)} с` : 'готов');
+    } else {
+      add('Память о растениях', `${details.life.memory.length} / ${memorySlotCount(details.genes.memorySlots)} мест`);
+      if (details.life.threat) add('Угроза', `убегает ещё ${details.life.threat.remaining.toFixed(1)} с`);
+    }
     add('Действие', ACTION_LABELS[details.action]);
     add('Причина', details.life.reason);
 

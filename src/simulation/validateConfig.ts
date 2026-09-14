@@ -37,6 +37,7 @@ export function validateConfig(config: SimulationConfig): void {
   requireNumber('world.width', config.world.width, { positive: true });
   requireNumber('world.depth', config.world.depth, { positive: true });
   requireNumber('population.initial', config.population.initial, { integer: true });
+  requireNumber('population.initialPredators', config.population.initialPredators, { integer: true });
   requireNumber('population.max', config.population.max, { integer: true, positive: true });
   requireNumber('food.initial', config.food.initial, { integer: true });
   requireNumber('food.max', config.food.max, { integer: true });
@@ -46,7 +47,7 @@ export function validateConfig(config: SimulationConfig): void {
   for (const key of ['capacityPerSize', 'initialShare', 'baseCost', 'moveCost', 'visionCost'] as const) {
     requireNumber(`energy.${key}`, config.energy[key], { positive: key === 'capacityPerSize' });
   }
-  for (const key of ['maxAge', 'minReproductionAge', 'offspringEnergyShare', 'reproductionCostPerSize'] as const) {
+  for (const key of ['maxAge', 'minReproductionAge', 'longevityCost', 'offspringEnergyShare', 'reproductionCostPerSize'] as const) {
     requireNumber(`lifecycle.${key}`, config.lifecycle[key]);
   }
   if (config.lifecycle.offspringEnergyShare > 1) {
@@ -68,7 +69,16 @@ export function validateConfig(config: SimulationConfig): void {
     requireNumber(`reproduction.${key}`, config.reproduction[key], { positive: key === 'gestationDuration' });
   }
   requireNumber('resources.regrowthPerSecond', config.resources.regrowthPerSecond);
+  requireNumber('predation.stomachShare', config.predation.stomachShare, { positive: true });
+  for (const key of ['bodyEnergyPerSize', 'efficiency', 'catchChance', 'attackCooldown', 'fleeDuration', 'scentRadius', 'shareRadius', 'immigrationInterval'] as const) {
+    requireNumber(`predation.${key}`, config.predation[key]);
+  }
+  for (const key of ['efficiency', 'catchChance'] as const) {
+    if (config.predation[key] > 1) fail(`predation.${key}`, config.predation[key]);
+  }
   requireNumber('perception.memoryDuration', config.perception.memoryDuration);
+  requireNumber('perception.memoryCost', config.perception.memoryCost);
+  requireNumber('perception.mateCallRadius', config.perception.mateCallRadius);
   requireNumber('perception.fieldOfView', config.perception.fieldOfView, { positive: true });
   if (config.perception.fieldOfView > Math.PI * 2) fail('perception.fieldOfView', config.perception.fieldOfView);
 

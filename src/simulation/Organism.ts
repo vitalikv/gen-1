@@ -1,6 +1,6 @@
 import type { OrganismAction } from '@/shared/snapshot';
 import type { Genome } from './Genome';
-import type { LifeState, Sex } from '@/shared/life';
+import type { Diet, LifeState, Sex } from '@/shared/life';
 
 export interface OrganismParams {
   id: number;
@@ -13,6 +13,7 @@ export interface OrganismParams {
   energy: number;
   capacityPerSize: number;
   sex?: Sex;
+  diet?: Diet;
   fatherId?: number | null;
 }
 
@@ -52,9 +53,9 @@ export class Organism {
     this.heading = params.heading;
     this.energy = Math.min(params.energy, this.capacity);
     this.life = {
-      sex: params.sex ?? 'female', fatherId: params.fatherId ?? null,
+      sex: params.sex ?? 'female', diet: params.diet ?? 'herbivore', fatherId: params.fatherId ?? null,
       growth: 1, health: 1, stamina: 1, stomach: 0, recovery: 0, pregnancy: null,
-      targetFoodId: null, mateId: null, memory: null, reason: 'Исследует окружение', deathCause: null,
+      targetFoodId: null, targetPreyId: null, attackCooldown: 0, threat: null, mateId: null, memory: [], reason: 'Исследует окружение', deathCause: null,
     };
   }
 
@@ -64,4 +65,5 @@ export class Organism {
 
   public get bodySize(): number { return this.genome.get('size') * Math.sqrt(this.life.growth); }
   public get sex(): Sex { return this.life.sex; }
+  public get isPredator(): boolean { return this.life.diet === 'predator'; }
 }

@@ -49,6 +49,11 @@ export class Environment {
   }
 
   /** Точное пересечение отрезка с кругом или прямоугольником, без дискретного семплирования. */
+  /** Можно ли дойти по прямой: нет препятствий и воды между точками */
+  public hasClearPath(a: MutablePoint, b: MutablePoint): boolean {
+    return this.hasLineOfSight(a, b) && !this.terrain.crossesWater(a, b);
+  }
+
   public hasLineOfSight(a: MutablePoint, b: MutablePoint): boolean {
     const dx = b.x - a.x;
     const dz = b.z - a.z;

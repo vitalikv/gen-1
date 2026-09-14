@@ -9,6 +9,13 @@ export const SELECTION_COLOR = new Color('#eb6834');
 export const OBSTACLE_COLOR = new Color('#b9bec6');
 export const ZONE_COLOR = new Color('#1baf7a');
 
+/** Окраска по полу: травоядные — синий и розовый, хищники — тёмно-красный и оранжевый */
+export const SEX_COLORS = {
+  herbivore: { male: '#2879d0', female: '#c94e91' },
+  predator: { male: '#9e2f14', female: '#e0782f' },
+} as const;
+export const DIET_COLORS = { herbivore: '#2879d0', predator: '#d0452a' } as const;
+
 /** Цвет шкалы для значения t в [0, 1] */
 export function sequentialColor(t: number, target: Color): Color {
   const clamped = Math.min(Math.max(Number.isFinite(t) ? t : 0, 0), 1);

@@ -1,13 +1,15 @@
 import { GENE_NAMES, type GeneName, type GeneValues } from './genes';
 import type { LifeState } from './life';
 
-export const ORGANISM_ACTIONS = ['wandering', 'seeking', 'eating', 'avoiding', 'resting', 'seekingMate', 'mating', 'remembering'] as const;
+export const ORGANISM_ACTIONS = [
+  'wandering', 'seeking', 'eating', 'avoiding', 'resting', 'seekingMate', 'mating', 'remembering', 'fleeing', 'hunting', 'following',
+] as const;
 
 export type OrganismAction = (typeof ORGANISM_ACTIONS)[number];
 
 /**
  * Упакованные поля организма в SimulationSnapshot.organisms
- * [x, z, heading, energyRatio, action, sex, bodySize, pregnant, ...гены в порядке GENE_NAMES]
+ * [x, z, heading, energyRatio, action, sex, bodySize, pregnant, predator, ...гены в порядке GENE_NAMES]
  */
 export const ORGANISM_FIELD = {
   x: 0,
@@ -18,9 +20,11 @@ export const ORGANISM_FIELD = {
   sex: 5,
   bodySize: 6,
   pregnant: 7,
+  /** 1 — хищник, 0 — травоядное */
+  predator: 8,
 } as const;
 
-const ORGANISM_GENE_OFFSET = 8;
+const ORGANISM_GENE_OFFSET = 9;
 
 export const ORGANISM_STRIDE = ORGANISM_GENE_OFFSET + GENE_NAMES.length;
 
@@ -54,6 +58,8 @@ export interface OrganismDetails {
   parentId: number | null;
   generation: number;
   age: number;
+  /** Возраст начала старения с учётом гена долголетия */
+  agingOnset: number;
   energy: number;
   capacity: number;
   action: OrganismAction;
@@ -65,13 +71,19 @@ export interface OrganismDetails {
 /** Точка истории эксперимента */
 export interface StatsSample {
   time: number;
+  /** Все организмы: травоядные и хищники */
   population: number;
+  predators: number;
   food: number;
-  /** Рождения и смерти с предыдущей точки */
+  /** Рождения, смерти и из них съеденные хищниками с предыдущей точки */
   births: number;
   deaths: number;
+  kills: number;
   averageEnergyRatio: number;
+  /** Средние гены травоядных */
   averageGenes: GeneValues;
+  /** Средние гены хищников; нули, если хищников нет */
+  averagePredatorGenes: GeneValues;
   /** Сезонный множитель плодородия */
   season: number;
   males: number;

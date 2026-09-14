@@ -22,7 +22,10 @@ export interface SimulationConfig {
     depth: number;
   };
   population: {
+    /** Стартовые травоядные */
     initial: number;
+    /** Стартовые хищники, дополнительно к травоядным */
+    initialPredators: number;
     /** Предел численности: при достижении рождения пропускаются */
     max: number;
   };
@@ -47,8 +50,11 @@ export interface SimulationConfig {
     visionCost: number;
   };
   lifecycle: {
+    /** Базовое начало старения; у организма умножается на ген longevity */
     maxAge: number;
     minReproductionAge: number;
+    /** Показатель цены долголетия: базовый расход умножается на longevity^longevityCost */
+    longevityCost: number;
     /** Доля энергии родителя, передаваемая потомку */
     offspringEnergyShare: number;
     /** Стоимость размножения на единицу размера родителя */
@@ -76,7 +82,38 @@ export interface SimulationConfig {
     pregnancyCostPerSize: number;
   };
   resources: { regrowthPerSecond: number };
-  perception: { fieldOfView: number; memoryDuration: number };
+  predation: {
+    /** Пищевая ценность тела жертвы на единицу размера сверх её запасённой энергии */
+    bodyEnergyPerSize: number;
+    /** Доля ценности жертвы, которую хищник может съесть; остальное теряется */
+    efficiency: number;
+    /** Вместимость желудка хищника как доля его энергетической вместимости: хищник наедается впрок */
+    stomachShare: number;
+    /** Вероятность поимки за попытку при равных размерах; растёт с размером хищника */
+    catchChance: number;
+    /** Пауза между попытками поимки, секунды */
+    attackCooldown: number;
+    /** Сколько секунд травоядное убегает после того, как потеряло хищника из виду */
+    fleeDuration: number;
+    /** Радиус чутья: голодный хищник без видимой жертвы идёт по следу ближайшей; 0 — выключено */
+    scentRadius: number;
+    /** Радиус, в котором растущие детёныши хищника получают долю добычи родителя и держатся рядом */
+    shareRadius: number;
+    /**
+     * Приток извне: пока хищников меньше двух, раз в столько секунд с края карты приходит пара
+     * взрослых хищников со стартовыми генами; 0 — выключен
+     */
+    immigrationInterval: number;
+  };
+  perception: {
+    fieldOfView: number;
+    /** Базовая длительность памяти о растении; у организма умножается на ген memorySpan */
+    memoryDuration: number;
+    /** Расход энергии в секунду на одно место памяти при длительности ×1 */
+    memoryCost: number;
+    /** Радиус брачного зова: готовые особи находят друг друга без прямой видимости; 0 — выключен */
+    mateCallRadius: number;
+  };
   behavior: {
     /** Интенсивность случайных поворотов при исследовании, радиан за √секунду */
     turnRate: number;
@@ -135,6 +172,7 @@ export function applyLiveSettings(target: SimulationConfig, source: SimulationCo
   target.physiology = { ...source.physiology };
   target.reproduction = { ...source.reproduction };
   target.resources = { ...source.resources };
+  target.predation = { ...source.predation };
   target.perception = { ...source.perception };
   target.environment.zonePreset = source.environment.zonePreset;
   target.environment.baseFertility = source.environment.baseFertility;

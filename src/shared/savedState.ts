@@ -4,7 +4,7 @@ import type { OrganismAction, StatsSample } from './snapshot';
 import type { LifeState } from './life';
 
 /** Версия модели: сохранения другой версии не загружаются, потому что продолжение не будет точным */
-export const MODEL_VERSION = 2;
+export const MODEL_VERSION = 5;
 
 export const SAVED_STATE_FORMAT = 'gen-1-state';
 
@@ -53,6 +53,9 @@ export interface SavedSimulationState {
     foodSpawnAccumulator: number;
     birthsTotal: number;
     deathsTotal: number;
+    killsTotal: number;
+    immigrantsTotal: number;
+    immigrationTimer: number;
     organisms: SavedOrganism[];
     food: SavedFood[];
   };
@@ -60,5 +63,6 @@ export interface SavedSimulationState {
     samples: StatsSample[];
     lastBirths: number;
     lastDeaths: number;
+    lastKills: number;
   };
 }
